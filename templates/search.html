@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Search Facilities | epaData{% endblock %}
+
+{% block content %}
+
+<!-- JINJA LOGIC: Flash messages for success/errors on the home page -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="row mb-3"><div class="col-12">
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+        </div></div>
+    {% endif %}
+{% endwith %}
+
+<div class="row g-4">
+    <!-- LEFT COLUMN: Search & Filter Controls -->
+    <div class="col-lg-3">
+        <div class="card shadow-sm border">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title h6 mb-0 fw-bold">Search Filters</h5>
+            </div>
+            <div class="card-body">
+                <!-- Using GET means the form selections will show up in the URL (e.g. /?state=KY&fuel=Coal) -->
+                <form action="/" method="GET">
+                    
+                    <div class="mb-3">
+                    <label for="state" class="form-label small fw-bold">State</label>
+                    
+                    <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES -->
+                    <select id="state" name="state" class="form-select form-select-sm"
+                        data-bs-toggle="tooltip" 
+                        title="Filter the database to only show power plants in a specific state."
+                        data-intro="You can filter the massive EPA dataset by state to find local emissions."
+                        data-step="1">
+                        <option value="">-- All States --</option>
+                        <option value="KY">Kentucky (KY)</option>
+                        <option value="IN">Indiana (IN)</option>
+                        <option value="OH">Ohio (OH)</option>
+                        <option value="TN">Tennessee (TN)</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="fuel" class="form-label small fw-bold">Primary Fuel</label>
+                    
+                    <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES -->
+                    <select id="fuel" name="fuel" class="form-select form-select-sm"
+                        data-bs-toggle="tooltip" 
+                        title="Find plants based on what they burn for power."
+                        data-intro="You can also narrow down results by the type of fuel the facility uses, like Coal or Natural Gas."
+                        data-step="2">
+                        <option value="">-- All Fuel Types --</option>
+                        <option value="Coal">Coal</option>
+                        <option value="Pipeline Natural Gas">Natural Gas</option>
+                        <option value="Diesel Oil">Diesel Oil</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                        <label for="min_co2" class="form-label small fw-bold">Min CO₂ Emissions (Tons)</label>
+                        <input type="number" id="min_co2" name="min_co2" class="form-control form-control-sm mono-num"
+                            data-bs-toggle="tooltip" 
+                            title="Filter out smaller facilities by setting a minimum pollution threshold."
+                            data-intro="Step 3: Thresholds. Enter a number here to only show power plants that emit massive amounts of CO₂."
+                            data-step="3">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="facility_query" class="form-label small fw-bold">Facility Name or EPA ID</label>
+                        <input type="text" id="facility_query" name="facility_query" class="form-control form-control-sm"
+                            data-bs-toggle="tooltip" 
+                            title="Directly search for a specific plant by its ORISPL code or name."
+                            data-intro="Step 4: Direct Search. If you know exactly which facility you want, type its name or EPA ID code here."
+                            data-step="4">
+                    </div>
+
+                <div class="d-grid gap-2">
+                    
+                    <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES -->
+                    <button type="submit" class="btn btn-success btn-sm fw-bold"
+                        data-bs-toggle="tooltip" 
+                        title="Run the SQLite database query with your selected filters."
+                        data-intro="Once your filters are set, click here to execute the database query and display the results in the table."
+                        data-step="3">
+                        Apply Filters
+                    </button>
+                    <a href="/" class="btn btn-outline-secondary btn-sm">Reset</a>
+                </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT COLUMN: Search Results Table -->
+    <div class="col-lg-9">
+        <div class="card shadow-sm border">
+            
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <span class="text-muted small">Showing records from SQLite database</span>
+                <a href="/export" class="btn btn-outline-dark btn-sm fw-bold"
+                   data-bs-toggle="tooltip" title="Download the current table as a CSV file."
+                   data-intro="Step 4: After filtering, click Export CSV to download a clean spreadsheet of your specific results." 
+                   data-step="4" 
+                   data-position="left">
+                   Export CSV
+                </a>
+            </div>
+
+            <div class="table-responsive"
+                 data-bs-toggle="tooltip" title="This grid displays the matching database records."
+                 data-intro="Step 5: The Data Grid. Your queried EPA records appear here after applying filters." data-step="5">
+                <table class="table table-hover table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" class="small text-uppercase">EPA ID</th>
+                            <th scope="col" class="small text-uppercase">Facility Name</th>
+                            <th scope="col" class="small text-uppercase">State</th>
+                            <th scope="col" class="small text-uppercase">Primary Fuel</th>
+                            <th scope="col" class="small text-uppercase text-end">CO₂ Mass (Tons)</th>
+                            <th scope="col" class="small text-uppercase text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- JINJA LOGIC: Check if the 'facilities' list from app.py is empty -->
+                        {% if facilities %}
+                            
+                            <!-- JINJA LOGIC: Loop through every item in the 'facilities' list -->
+                            {% for fac in facilities %}
+                            <tr>
+                                <!-- Inject the data using double curly braces -->
+                                <td class="mono-num fw-bold">{{ fac.id }}</td>
+                                <td>{{ fac.name }}</td>
+                                <td><span class="badge bg-secondary">{{ fac.state }}</span></td>
+                                <td>{{ fac.fuel }}</td>
+                                <td class="text-end mono-num">{{ fac.co2 }}</td>
+                                <td class="text-center">
+                                    <!-- This builds a unique URL link for each specific facility ID -->
+                                    <a href="/facility/{{ fac.id }}" class="btn btn-outline-primary btn-sm py-0"
+                                       data-bs-toggle="tooltip" title="View in-depth metrics and unit configurations for this specific power plant."
+                                       data-intro="Step 6: Inspection. Click 'Details' on any row to drill down into that specific power plant's individual smokestacks and emissions." data-step="6">
+                                       Details
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            
+                        {% else %}
+                            <!-- If Ejlin's database returns zero results, show this empty row instead -->
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-muted">
+                                    No matching facilities found. Try adjusting your search filters or uploading data.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

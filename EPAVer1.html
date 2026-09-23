@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPA Data Explorer | Emissions Search</title>
+    <style>
+        :root {
+            /* Scientific Palette */
+            --bg-primary: #f8f9fa;
+            --bg-surface: #ffffff;
+            --text-primary: #212529;
+            --text-secondary: #495057;
+            --border-subtle: #dee2e6;
+            --border-heavy: #adb5bd;
+            --epa-green: #2b5c46;
+            --epa-green-hover: #1e4132;
+            --epa-blue: #23425e;
+            --focus-ring: #4c8a6c;
+        }
+
+        /* Typography */
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            color: var(--text-primary);
+            background-color: var(--bg-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+        }
+
+        .mono-text {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            letter-spacing: -0.5px;
+        }
+
+        /* Layout */
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 24px;
+            min-height: 100vh;
+        }
+
+        header {
+            grid-column: 1 / -1;
+            border-bottom: 2px solid var(--text-primary);
+            padding-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--epa-blue);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sys-status {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Sidebar Filters */
+        aside {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-heavy);
+            padding: 16px;
+            height: fit-content;
+        }
+
+        .filter-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 6px 8px;
+            font-family: inherit;
+            font-size: 13px;
+            border: 1px solid var(--border-heavy);
+            background-color: var(--bg-surface);
+            border-radius: 0;
+            box-sizing: border-box;
+        }
+
+        input:focus-visible,
+        select:focus-visible,
+        button:focus-visible {
+            outline: 2px solid var(--focus-ring);
+            outline-offset: 1px;
+            border-color: var(--focus-ring);
+        }
+
+        .btn-primary {
+            width: 100%;
+            background-color: var(--epa-green);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+            transition: background-color 0.15s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--epa-green-hover);
+        }
+
+        /* Data Area */
+        main {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .table-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 16px;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .table-container {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-heavy);
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--bg-primary);
+            border-bottom: 2px solid var(--border-heavy);
+            padding: 8px 12px;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        tbody tr:hover {
+            background-color: #f1f3f5;
+        }
+
+        .align-right {
+            text-align: right;
+        }
+
+        /* Empty State */
+        .empty-state {
+            padding: 48px;
+            text-align: center;
+            color: var(--text-secondary);
+            /* Displayed by default until search is executed */
+            display: block; 
+        }
+
+        .empty-state svg {
+            width: 32px;
+            height: 32px;
+            margin-bottom: 12px;
+            fill: var(--text-secondary);
+        }
+
+        .data-results {
+            /* Hidden by default */
+            display: none; 
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div>
+                <h1>epaData Explorer</h1>
+                <div class="sys-status">CAMPD Emissions Repository | Phase 1 Validated</div>
+            </div>
+            <div class="sys-status mono-text">DB_CONN: LOCAL_SQLITE_READY</div>
+        </header>
+
+        <aside>
+            <form id="search-filters">
+                <div class="filter-group">
+                    <label for="state-code">State Code</label>
+                    <select id="state-code" name="state">
+                        <option value="">-- ALL STATES --</option>
+                        <option value="KY">KY - Kentucky</option>
+                        <option value="OH">OH - Ohio</option>
+                        <option value="IN">IN - Indiana</option>
+                        <option value="TN">TN - Tennessee</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="fuel-type">Primary Fuel</label>
+                    <select id="fuel-type" name="fuel">
+                        <option value="">-- ALL FUELS --</option>
+                        <option value="Coal">Coal</option>
+                        <option value="Pipeline Natural Gas">Pipeline Natural Gas</option>
+                        <option value="Diesel Oil">Diesel Oil</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="min-co2">Min CO₂ (Short Tons)</label>
+                    <input type="number" id="min-co2" name="min_co2" placeholder="e.g. 50000" min="0" step="1000">
+                </div>
+
+                <div class="filter-group">
+                    <label for="facility-id">Facility ID (ORISPL)</label>
+                    <input type="text" id="facility-id" name="facility_id" class="mono-text" placeholder="e.g. 3136">
+                </div>
+
+                <button type="submit" class="btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    EXECUTE QUERY
+                </button>
+            </form>
+        </aside>
+
+        <main>
+            <div class="table-controls">
+                <span class="sys-status">Awaiting input parameters...</span>
+                <button type="button" class="btn-primary" style="margin-top: 0; background-color: var(--epa-blue);" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    EXPORT CSV
+                </button>
+            </div>
+
+            <div class="table-container">
+                <!-- Initial Empty State -->
+                <div class="empty-state" id="initial-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                    <p><strong>NO DATA LOADED</strong></p>
+                    <p class="sys-status">Adjust filters in the control panel and execute query to retrieve facility records.</p>
+                </div>
+
+                <!-- Data Table (Hidden by default, shown via Jinja/JS when data exists) -->
+                <table class="data-results">
+                    <thead>
+                        <tr>
+                            <th>Facility ID</th>
+                            <th>Facility Name</th>
+                            <th>State</th>
+                            <th>Primary Fuel</th>
+                            <th class="align-right">SO₂ (Tons)</th>
+                            <th class="align-right">NOₓ (Tons)</th>
+                            <th class="align-right">CO₂ (Tons)</th>
+                            <th class="align-right">Heat Input (mmBtu)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Placeholder rows to demonstrate structure -->
+                        <tr>
+                            <td class="mono-text">1353</td>
+                            <td>Ghent</td>
+                            <td>KY</td>
+                            <td>Coal</td>
+                            <td class="mono-text align-right">4,215.10</td>
+                            <td class="mono-text align-right">2,104.55</td>
+                            <td class="mono-text align-right">8,450,120.00</td>
+                            <td class="mono-text align-right">81,500,200.00</td>
+                        </tr>
+                        <tr>
+                            <td class="mono-text">1384</td>
+                            <td>Trimble County</td>
+                            <td>KY</td>
+                            <td>Pipeline Natural Gas</td>
+                            <td class="mono-text align-right">1,012.30</td>
+                            <td class="mono-text align-right">850.20</td>
+                            <td class="mono-text align-right">3,120,400.00</td>
+                            <td class="mono-text align-right">45,100,500.00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Facility Details | epaData{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Explorer</a></li>
+                <!-- Inject the dynamic ID from the URL -->
+                <li class="breadcrumb-item active" aria-current="page">Facility #{{ facility_id }} Details</li>
+            </ol>
+        </nav>
+
+        <!-- (Keeping the top header hardcoded temporarily until Ejlin connects the Facility object) -->
+        <div class="card shadow-sm border mb-4"
+             data-bs-toggle="tooltip" title="High-level metadata for this specific facility."
+             data-intro="Step 1: Facility Overview. This displays the plant's high-level metadata, such as coordinates, active status, and EPA ID." data-step="1">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h2 class="h3 fw-bold text-dark mb-1">Facility View</h2>
+                        <p class="text-muted mb-0">Record details</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border"
+             data-bs-toggle="tooltip" title="A breakdown of every individual boiler and smokestack at this plant."
+             data-intro="Step 2: Unit Breakdown. This table isolates individual smokestacks, detailing exact fuel types and pollution control devices used on site." data-step="2">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title h6 mb-0 fw-bold">Monitored Generating Units (Smokestacks)</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" class="small text-uppercase">Unit ID</th>
+                            <th scope="col" class="small text-uppercase">Boiler / Unit Type</th>
+                            <th scope="col" class="small text-uppercase">Primary Fuel</th>
+                            <th scope="col" class="small text-uppercase">Pollution Controls</th>
+                            <th scope="col" class="small text-uppercase text-end">Operating Hours</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- JINJA LOGIC: Loop through the list of specific units passed from app.py -->
+                        {% for unit in units %}
+                        <tr>
+                            <!-- Inject the dynamic data -->
+                            <td class="mono-num fw-bold">{{ unit.id }}</td>
+                            <td>{{ unit.type }}</td>
+                            <td>{{ unit.fuel }}</td>
+                            <td><span class="badge bg-secondary">{{ unit.control }}</span></td>
+                            <td class="text-end mono-num">{{ unit.hours }} hrs</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

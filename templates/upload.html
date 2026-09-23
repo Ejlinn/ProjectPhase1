@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Upload EPA Data | epaData{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+
+        <div class="d-flex align-items-center justify-content-between border-bottom pb-2 mb-4">
+            <h2 class="h4 fw-bold text-dark mb-0">Import CAMPD Dataset</h2>
+            <span class="text-muted small">Accepted formats: .csv, .xlsx</span>
+        </div>
+
+        <!-- JINJA LOGIC: Catch and display messages sent from app.py -->
+        <!-- 'get_flashed_messages' looks for the success/error alerts we coded in the Python file -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <!-- Loop through all messages (just in case there are multiple) -->
+                {% for category, message in messages %}
+                    <!-- The 'category' variable injects the color (success=green, warning=yellow, danger=red) -->
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-info-circle me-2 flex-shrink-0" viewBox="0 0 16 16">
+                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+                <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0"/>
+            </svg>
+            <div>
+                Files will be screened with <strong>pandas</strong>. Any duplicate plant keys or missing columns will generate an error log before saving to SQLite.
+            </div>
+        </div>
+
+        <div class="card shadow-sm border">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title h6 mb-0 fw-bold">Manual File Submission</h5>
+            </div>
+            <div class="card-body p-4">
+                
+                <!-- Notice method="POST" and enctype="multipart/form-data". These are absolutely mandatory for file uploads to work. -->
+                <form action="/upload" method="POST" enctype="multipart/form-data">
+                    
+                    <div class="mb-4">
+                        <label for="campd_file" class="form-label fw-bold">Select CAMPD Spreadsheet File</label>
+                        
+                        <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES TO THE INPUT -->
+                        <!-- data-step="1" makes this the first stop on the tutorial tour -->
+                        <input class="form-control" type="file" id="campd_file" name="campd_file" accept=".csv, .xlsx" required
+                            data-bs-toggle="tooltip" 
+                            data-bs-placement="top" 
+                            title="Click here to browse your computer for the EPA dataset file."
+                            data-intro="Step 1: Upload your raw data. Click 'Browse' to select the EPA dataset downloaded from the CAMPD portal."
+                            data-step="1">
+                            
+                        <div class="form-text">Choose the raw CSV or Excel export downloaded from the EPA CAMPD website.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="dataset_note" class="form-label fw-bold">Dataset Description / Source Notes</label>
+                        <textarea class="form-control" id="dataset_note" name="dataset_note" rows="2" placeholder="e.g., 2024 Kentucky Facility Emissions download"
+                            data-bs-toggle="tooltip" 
+                            title="Add any context or notes about the dataset year or state."
+                            data-intro="Step 2: Add metadata. Write a brief note about what this dataset contains so you can track it later."
+                            data-step="2"></textarea>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2">
+                        <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES TO THE SUBMIT BUTTON -->
+                        <!-- data-step="2" makes this the second stop on the tutorial tour -->
+                        <a href="/" class="btn btn-outline-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-success fw-bold px-4"
+                            data-bs-toggle="tooltip" 
+                            data-bs-placement="bottom" 
+                            title="This runs the pandas validation script before saving to the database."
+                            data-intro="Step 3: Submit the file. The system will scan for missing columns and load the data into the SQLite database."
+                            data-step="3">
+                            Validate & Ingest File
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

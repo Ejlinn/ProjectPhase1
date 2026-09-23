@@ -1,0 +1,8 @@
+# This tells the server to install the Flask web framework[cite: 3].
+Flask
+
+# This installs the tool that connects your Python code to the database[cite: 3].
+Flask-SQLAlchemy
+
+# This installs the data analysis tool for reading Excel and CSV files[cite: 3].
+pandas
