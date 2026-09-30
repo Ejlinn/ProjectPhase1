@@ -1,37 +1,40 @@
 # epaData Explorer (Phase 1)
 
-A Flask and SQLite web application designed to query, inspect, and ingest power sector emissions records collected under EPA Clean Air Markets Division (CAMPD) programs.
+A Flask and SQLite web application designed to ingest, query, inspect, and export power sector emissions records collected under EPA Clean Air Markets Division (CAMPD) programs[cite: 1, 2, 8].
 
 ---
 
 ## Features
 
-* **Emissions Search & Filter Grid (`/`)**: Query facilities by state, primary fuel category, minimum CO₂ emission thresholds, or direct facility name and EPA ORISPL ID.
-* **Dataset Ingestion (`/upload`)**: Manual file submission portal accepting CAMPD raw `.csv` and `.xlsx` files with validation warnings and status flash notifications.
-* **Facility Details (`/facility/<id>`)**: Drill-down inspection view showing facility coordinates, regulatory program status, and individual monitored generating units (smokestacks).
-* **Interactive Walkthrough**: Built-in Intro.js tutorial accessible from the top navigation bar to guide users sequentially through filtering, uploading, and data inspection.
-* **Contextual Tooltips**: Bootstrap hover tooltips on inputs, buttons, and navigation elements explaining system controls and expected data formats.
+* **Multi-Parameter Search & Filter (`/`)**: Query facility emissions records by state, primary fuel category, calendar date periods (start and end date), multi-pollutant threshold levels (CO₂, SO₂, or NOₓ in tons), or direct keyword search by facility name and ORISPL ID.
+* **Dataset Ingestion Pipeline (`/upload`)**: File submission portal supporting raw CAMPD `.csv` spreadsheets with dynamic column matching and automated ingestion directly into SQLite via pandas.
+* **CSV Export Utility (`/export`)**: Direct streaming endpoint generating clean, structured CSV downloads of database records matching current user queries.
+* **Facility Details View (`/facility/<id>`)**: Drill-down inspection screen displaying plant identifiers, location, regulatory program context, and unit-by-unit smokestack emissions breakdowns[cite: 2, 15].
+* **Interactive Guided Tutorial**: Step-by-step Intro.js walkthrough initiated from the navigation bar, structured with background click protection so users can follow the workflow without accidental exits[cite: 2].
+* **Contextual Tooltips**: Bootstrap hover tooltips attached across all search controls, calendar inputs, table actions, and file inputs to assist navigation[cite: 2].
 
 ---
 
 ## Tech Stack
 
-* **Backend**: Python, Flask
-* **Database & ORM**: SQLite, Flask-SQLAlchemy
+* **Backend**: Python 3.11, Flask
+* **Database & ORM**: SQLite, Flask-SQLAlchemy[cite: 8, 15]
 * **Data Processing**: Pandas
-* **Front End**: Jinja2 Templates, Bootstrap 5, Intro.js
+* **Front End**: Jinja2 Templates, Bootstrap 5, Intro.js[cite: 2]
 
 ---
 
 ## Project Structure
 
 ```text
-├── app.py                  # Application routing, form processing, and session management
-├── models.py               # SQLAlchemy database schema and table definitions
-├── requirements.txt        # Python package dependencies
-├── README.md               # Documentation and execution instructions
+├── app.py                  # Flask routing, query filtering, CSV ingestion, and export endpoint
+├── models.py               # SQLAlchemy schema definitions for FacilityRecord
+├── requirements.txt        # Package dependencies
+├── README.md               # Setup and architecture documentation
+├── run_app.bat             # Automated Windows launch and virtual environment setup script
+├── run_app.sh              # Automated Unix/macOS launch script
 └── templates/
-    ├── base.html           # Master layout with navigation, Intro.js scripts, and tooltips
-    ├── search.html         # Data grid, filter sidebar, and CSV export control
-    ├── upload.html         # Dataset submission form and flash alert handling
-    └── detail.html         # Facility metadata card and unit breakdown table
+    ├── base.html           # Master layout containing navigation, Intro.js scripts, and tooltips
+    ├── search.html         # Filter controls, calendar selectors, results table, and export button
+    ├── upload.html         # Ingestion form with validation alerts[cite: 4]
+    └── detail.html         # Plant metadata and monitored unit breakdowns[cite: 2]
