@@ -62,22 +62,49 @@
                     </select>
                 </div>
 
-                <div class="mb-3">
-                        <label for="min_co2" class="form-label small fw-bold">Min CO₂ Emissions (Tons)</label>
-                        <input type="number" id="min_co2" name="min_co2" class="form-control form-control-sm mono-num"
-                            data-bs-toggle="tooltip" 
-                            title="Filter out smaller facilities by setting a minimum pollution threshold."
-                            data-intro="Step 3: Thresholds. Enter a number here to only show power plants that emit massive amounts of CO₂."
-                            data-step="3">
+               <!-- Step 3: Calendar Date Range with Tooltips & Tutorial -->
+                    <!-- Step 3: Calendar Date Range with Tooltips & Tutorial -->
+                    <div class="mb-3"
+                        data-bs-toggle="tooltip" 
+                        title="Pick a start and end date to filter emissions over a specific timeframe."
+                        data-intro="Step 3: Time Period. Select a date range from the calendar to view emissions generated during specific years, months, or days."
+                        data-step="3">
+                        <label class="form-label small fw-bold">Time Period</label>
+                        <div class="mb-2">
+                            <span class="text-muted small d-block mb-1">From</span>
+                            <input type="date" id="start_date" name="start_date" class="form-control form-control-sm">
+                        </div>
+                        <div>
+                            <span class="text-muted small d-block mb-1">To</span>
+                            <input type="date" id="end_date" name="end_date" class="form-control form-control-sm">
+                        </div>
                     </div>
 
+                    <!-- Step 4: Multi-Pollutant Threshold with Tooltips & Tutorial -->
+                    <div class="mb-3"
+                        data-bs-toggle="tooltip" 
+                        title="Choose a pollutant (CO2, SO2, or NOx) and specify a minimum emissions threshold."
+                        data-intro="Step 4: Emissions Thresholds. Select whether you want to screen for CO₂, SO₂, or NOₓ, then set a minimum tonnage threshold."
+                        data-step="4">
+                        <label class="form-label small fw-bold">Minimum Emissions (Tons)</label>
+                        <div class="input-group input-group-sm">
+                            <select id="pollutant_type" name="pollutant_type" class="form-select" style="max-width: 90px;">
+                                <option value="co2">CO₂</option>
+                                <option value="so2">SO₂</option>
+                                <option value="nox">NOx</option>
+                            </select>
+                            <input type="number" id="min_emissions" name="min_emissions" class="form-control mono-num" placeholder="e.g. 50000">
+                        </div>
+                    </div>
+
+                    <!-- Step 5: Direct Search Query with Tooltips & Tutorial -->
                     <div class="mb-4">
                         <label for="facility_query" class="form-label small fw-bold">Facility Name or EPA ID</label>
                         <input type="text" id="facility_query" name="facility_query" class="form-control form-control-sm"
                             data-bs-toggle="tooltip" 
                             title="Directly search for a specific plant by its ORISPL code or name."
-                            data-intro="Step 4: Direct Search. If you know exactly which facility you want, type its name or EPA ID code here."
-                            data-step="4">
+                            data-intro="Step 5: Direct Search. If you know exactly which facility you want, type its name or EPA ID code here."
+                            data-step="5">
                     </div>
 
                 <div class="d-grid gap-2">
@@ -86,8 +113,8 @@
                     <button type="submit" class="btn btn-success btn-sm fw-bold"
                         data-bs-toggle="tooltip" 
                         title="Run the SQLite database query with your selected filters."
-                        data-intro="Once your filters are set, click here to execute the database query and display the results in the table."
-                        data-step="3">
+                        data-intro="Step 6: Execute Query. Click here to run your query and refresh the results table."
+                        data-step="6">
                         Apply Filters
                     </button>
                     <a href="/" class="btn btn-outline-secondary btn-sm">Reset</a>
@@ -106,8 +133,8 @@
                 <span class="text-muted small">Showing records from SQLite database</span>
                 <a href="/export" class="btn btn-outline-dark btn-sm fw-bold"
                    data-bs-toggle="tooltip" title="Download the current table as a CSV file."
-                   data-intro="Step 4: After filtering, click Export CSV to download a clean spreadsheet of your specific results." 
-                   data-step="4" 
+                   data-intro="Step 7: After filtering, click Export CSV to download a clean spreadsheet of your specific results." 
+                   data-step="7" 
                    data-position="left">
                    Export CSV
                 </a>
@@ -115,7 +142,7 @@
 
             <div class="table-responsive"
                  data-bs-toggle="tooltip" title="This grid displays the matching database records."
-                 data-intro="Step 5: The Data Grid. Your queried EPA records appear here after applying filters." data-step="5">
+                 data-intro="Step 7: The Data Grid. Your queried EPA records appear here after applying filters." data-step="7">
                 <table class="table table-hover table-striped mb-0 align-middle">
                     <thead class="table-light">
                         <tr>
@@ -144,7 +171,7 @@
                                     <!-- This builds a unique URL link for each specific facility ID -->
                                     <a href="/facility/{{ fac.id }}" class="btn btn-outline-primary btn-sm py-0"
                                        data-bs-toggle="tooltip" title="View in-depth metrics and unit configurations for this specific power plant."
-                                       data-intro="Step 6: Inspection. Click 'Details' on any row to drill down into that specific power plant's individual smokestacks and emissions." data-step="6">
+                                       data-intro="Step 9: Inspection. Click 'Details' on any row to drill down into that specific power plant's individual smokestacks and emissions." data-step="9">
                                        Details
                                     </a>
                                 </td>

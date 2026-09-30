@@ -4,19 +4,17 @@ from flask_sqlalchemy import SQLAlchemy
 # Create a database object that we will use to build our tables
 db = SQLAlchemy()
 
-# Define a new blueprint class called Facility which represents a database table
-class Facility(db.Model):
-    # Name the actual table 'facilities' inside the database
-    __tablename__ = 'facilities'
+class FacilityRecord(db.Model):
+    __tablename__ = 'facility_records'
     
-    # Create a column for an ID number that acts as the primary unique key.
     id = db.Column(db.Integer, primary_key=True)
-    
-    # Create a column for the EPA facility ID as a short string of text
-    epa_facility_id = db.Column(db.String(50), nullable=False)
-    
-    # Create a column for the full name of the facility
-    facility_name = db.Column(db.String(200))
-    
-    # Create a column for the state abbreviation using a two-letter string
-    state = db.Column(db.String(2))
+    facility_id = db.Column(db.String(50), nullable=False)
+    facility_name = db.Column(db.String(255))
+    state = db.Column(db.String(10))
+    unit_id = db.Column(db.String(50))
+    primary_fuel = db.Column(db.String(100))
+    co2_mass = db.Column(db.Float, default=0.0)
+    so2_mass = db.Column(db.Float, default=0.0)
+    nox_mass = db.Column(db.Float, default=0.0)
+    heat_input = db.Column(db.Float, default=0.0)
+    record_date = db.Column(db.String(20))
