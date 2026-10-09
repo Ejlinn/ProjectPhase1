@@ -39,10 +39,11 @@
                     <thead class="table-light">
                         <tr>
                             <th scope="col" class="small text-uppercase">Unit ID</th>
+                            <th scope="col" class="small text-uppercase">Date / Time</th>
                             <th scope="col" class="small text-uppercase">Boiler / Unit Type</th>
                             <th scope="col" class="small text-uppercase">Primary Fuel</th>
                             <th scope="col" class="small text-uppercase">Pollution Controls</th>
-                            <th scope="col" class="small text-uppercase text-end">Operating Hours</th>
+                            <th scope="col" class="small text-uppercase text-end">CO₂ Emissions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -51,10 +52,11 @@
                         <tr>
                             <!-- Inject the dynamic data -->
                             <td class="mono-num fw-bold">{{ unit.id }}</td>
+                            <td class="mono-num small text-muted">{{ unit.date_time }}</td>
                             <td>{{ unit.type }}</td>
                             <td>{{ unit.fuel }}</td>
                             <td><span class="badge bg-secondary">{{ unit.control }}</span></td>
-                            <td class="text-end mono-num">{{ unit.hours }} hrs</td>
+                            <td class="text-end mono-num">{{ unit.hours }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

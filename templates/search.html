@@ -64,19 +64,30 @@
 
                <!-- Step 3: Calendar Date Range with Tooltips & Tutorial -->
                     <!-- Step 3: Calendar Date Range with Tooltips & Tutorial -->
+                    <!-- Step 3: Calendar Date & Time Range with Tooltips & Tutorial -->
                     <div class="mb-3"
                         data-bs-toggle="tooltip" 
-                        title="Pick a start and end date to filter emissions over a specific timeframe."
-                        data-intro="Step 3: Time Period. Select a date range from the calendar to view emissions generated during specific years, months, or days."
+                        title="Pick a date range and specific hours (0-23) to filter emissions."
+                        data-intro="Step 3: Time Period & Hour. Select a calendar date range and specific operating hours (0:00 to 23:00) to isolate emissions."
                         data-step="3">
                         <label class="form-label small fw-bold">Time Period</label>
                         <div class="mb-2">
-                            <span class="text-muted small d-block mb-1">From</span>
+                            <span class="text-muted small d-block mb-1">From Date</span>
                             <input type="date" id="start_date" name="start_date" class="form-control form-control-sm">
                         </div>
-                        <div>
-                            <span class="text-muted small d-block mb-1">To</span>
+                        <div class="mb-2">
+                            <span class="text-muted small d-block mb-1">To Date</span>
                             <input type="date" id="end_date" name="end_date" class="form-control form-control-sm">
+                        </div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-6">
+                                <span class="text-muted small d-block mb-1">Start Hour</span>
+                                <input type="number" id="start_hour" name="start_hour" class="form-control form-control-sm mono-num" min="0" max="23" placeholder="0 (12am)">
+                            </div>
+                            <div class="col-6">
+                                <span class="text-muted small d-block mb-1">End Hour</span>
+                                <input type="number" id="end_hour" name="end_hour" class="form-control form-control-sm mono-num" min="0" max="23" placeholder="23 (11pm)">
+                            </div>
                         </div>
                     </div>
 
@@ -144,13 +155,14 @@
                  data-bs-toggle="tooltip" title="This grid displays the matching database records."
                  data-intro="Step 7: The Data Grid. Your queried EPA records appear here after applying filters." data-step="7">
                 <table class="table table-hover table-striped mb-0 align-middle">
-                    <thead class="table-light">
+                    <thead class="table-light user-select-none">
                         <tr>
-                            <th scope="col" class="small text-uppercase">EPA ID</th>
-                            <th scope="col" class="small text-uppercase">Facility Name</th>
-                            <th scope="col" class="small text-uppercase">State</th>
-                            <th scope="col" class="small text-uppercase">Primary Fuel</th>
-                            <th scope="col" class="small text-uppercase text-end">CO₂ Mass (Tons)</th>
+                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(0)">EPA ID <span class="sort-icon">↕</span></th>
+                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(1)">Facility Name <span class="sort-icon">↕</span></th>
+                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(2)">State <span class="sort-icon">↕</span></th>
+                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(3)">Date / Time <span class="sort-icon">↕</span></th>
+                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(4)">Primary Fuel <span class="sort-icon">↕</span></th>
+                            <th scope="col" class="small text-uppercase text-end cursor-pointer" onclick="sortTable(5)">CO₂ Mass (Tons) <span class="sort-icon">↕</span></th>
                             <th scope="col" class="small text-uppercase text-center">Action</th>
                         </tr>
                     </thead>
@@ -165,6 +177,7 @@
                                 <td class="mono-num fw-bold">{{ fac.id }}</td>
                                 <td>{{ fac.name }}</td>
                                 <td><span class="badge bg-secondary">{{ fac.state }}</span></td>
+                                <td class="mono-num small text-muted">{{ fac.date_time }}</td>
                                 <td>{{ fac.fuel }}</td>
                                 <td class="text-end mono-num">{{ fac.co2 }}</td>
                                 <td class="text-center">
@@ -192,4 +205,74 @@
         </div>
     </div>
 </div>
+<script>
+let sortDirections = {};
+
+function sortTable(columnIndex) {
+    const table = document.querySelector(".table-results") || document.querySelector("table");
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    
+    // Ignore empty state rows
+    if (rows.length === 1 && rows[0].querySelector("td").getAttribute("colspan")) {
+        return;
+    }
+
+    const headers = table.querySelectorAll("th");
+
+    // Determine direction: true = asc, false = desc, undefined = default/reset
+    let dir = sortDirections[columnIndex];
+    if (dir === undefined || dir === false) {
+        sortDirections[columnIndex] = true; // Ascending
+    } else if (dir === true) {
+        sortDirections[columnIndex] = false; // Descending
+    } else {
+        sortDirections[columnIndex] = undefined; // Reset
+    }
+
+    const currentDir = sortDirections[columnIndex];
+
+    // Reset arrows on all other headers to neutral
+    headers.forEach((th, idx) => {
+        const icon = th.querySelector(".sort-icon");
+        if (icon && idx !== columnIndex) {
+            sortDirections[idx] = undefined;
+            icon.innerText = "↕";
+        }
+    });
+
+    // Update arrow on the currently active column
+    const activeIcon = headers[columnIndex].querySelector(".sort-icon");
+    if (activeIcon) {
+        if (currentDir === true) {
+            activeIcon.innerText = "↑";
+        } else if (currentDir === false) {
+            activeIcon.innerText = "↓";
+        } else {
+            activeIcon.innerText = "↕";
+        }
+    }
+
+    if (currentDir === undefined) {
+        location.reload();
+        return;
+    }
+
+    rows.sort((a, b) => {
+        let cellA = a.querySelectorAll("td")[columnIndex].innerText.trim();
+        let cellB = b.querySelectorAll("td")[columnIndex].innerText.trim();
+
+        let numA = parseFloat(cellA.replace(/,/g, ''));
+        let numB = parseFloat(cellB.replace(/,/g, ''));
+
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return currentDir ? numA - numB : numB - numA;
+        }
+
+        return currentDir ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+}
+</script>
 {% endblock %}

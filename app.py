@@ -4,8 +4,9 @@ try:
     pd = importlib.import_module("pandas")
 except ImportError:
     pd = None
+from datetime import datetime
 from flask import Flask, render_template, request, flash, redirect, url_for
-from models import db, FacilityRecord
+from models import db, FacilityRecord, UploadedDataset
 
 app = Flask(__name__)
 app.secret_key = "super_secret_capstone_key"
@@ -16,9 +17,17 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
-# Automatically create the database tables on startup
+# Automatically create or update the database tables on startup
+from sqlalchemy import inspect, text
+
 with app.app_context():
     db.create_all()
+    inspector = inspect(db.engine)
+    if inspector.has_table("facility_records"):
+        columns = [col["name"] for col in inspector.get_columns("facility_records")]
+        if "dataset_id" not in columns or "record_hour" not in columns:
+            db.drop_all()
+            db.create_all()
 
 
 @app.route("/")
@@ -28,9 +37,11 @@ def index():
     fuel_filter = request.args.get('fuel', '').strip()
     facility_query = request.args.get('facility_query', '').strip()
 
-    # New calendar and pollutant variables
+    # New calendar, time, and pollutant variables
     start_date = request.args.get('start_date', '').strip()
     end_date = request.args.get('end_date', '').strip()
+    start_hour = request.args.get('start_hour', '').strip()
+    end_hour = request.args.get('end_hour', '').strip()
     pollutant_type = request.args.get('pollutant_type', 'co2').strip()
     min_emissions = request.args.get('min_emissions', '').strip()
     
@@ -46,6 +57,16 @@ def index():
         query = query.filter(FacilityRecord.record_date >= start_date)
     if end_date:
         query = query.filter(FacilityRecord.record_date <= end_date)
+    if start_hour:
+        try:
+            query = query.filter(FacilityRecord.record_hour >= int(start_hour))
+        except ValueError:
+            pass
+    if end_hour:
+        try:
+            query = query.filter(FacilityRecord.record_hour <= int(end_hour))
+        except ValueError:
+            pass
 
     if min_emissions:
         try:
@@ -69,14 +90,16 @@ def index():
     # Convert database rows to the dictionary format expected by search.html
     facilities = []
     for r in db_rows:
+        date_str = r.record_date or "N/A"
+        hour_str = f" {r.record_hour:02d}:00" if r.record_hour is not None else ""
         facilities.append({
             "id": r.facility_id,
             "name": r.facility_name,
             "state": r.state,
+            "date_time": f"{date_str}{hour_str}",
             "fuel": r.primary_fuel or "N/A",
             "co2": f"{r.co2_mass:,.2f}" if r.co2_mass else "0.00"
         })
-
     return render_template("search.html", facilities=facilities)
 
 
@@ -98,38 +121,63 @@ def upload():
 
         if file and file.filename and file.filename.lower().endswith('.csv'):
             try:
-                # Read the CSV with pandas
+                # Reset file stream pointer to the beginning
+                file.stream.seek(0)
                 df = pd.read_csv(file.stream)
 
-                # Clean column headers (strip whitespace and uppercase)
+                if df.empty:
+                    flash("The uploaded CSV file is empty.", "warning")
+                    return redirect(request.url)
+
+                # Clean column headers (strip whitespace)
                 df.columns = [str(col).strip() for col in df.columns]
+                cols_lower = {col.lower(): col for col in df.columns}
 
-                # Locate target columns dynamically across CAMPD formats
-                col_fac_id = next((c for c in df.columns if 'Facility ID' in c or 'ORISPL' in c), None)
-                col_fac_name = next((c for c in df.columns if 'Facility Name' in c), None)
-                col_state = next((c for c in df.columns if 'State' in c), None)
-                col_date = next((c for c in df.columns if 'Date' in c or 'Year' in c), None)
-                col_unit = next((c for c in df.columns if 'Unit ID' in c), None)
-                col_fuel = next((c for c in df.columns if 'Fuel' in c), None)
-                col_co2 = next((c for c in df.columns if 'CO2' in c and ('tons' in c.lower() or 'short tons' in c.lower() or 'mass' in c.lower())), None)
-                col_so2 = next((c for c in df.columns if 'SO2' in c and ('tons' in c.lower() or 'mass' in c.lower())), None)
-                col_nox = next((c for c in df.columns if 'NOx' in c and ('tons' in c.lower() or 'mass' in c.lower())), None)
-                col_heat = next((c for c in df.columns if 'Heat Input' in c), None)
+                def find_col(keywords):
+                    for kw in keywords:
+                        for col_l, original_col in cols_lower.items():
+                            if kw in col_l:
+                                return original_col
+                    return None
 
-                # Clear previous entries to display newly uploaded dataset
-                FacilityRecord.query.delete()
+                # Flexible column matching across all CAMPD formats
+                col_fac_id = find_col(['facility id', 'orispl', 'plant id'])
+                col_fac_name = find_col(['facility name', 'plant name'])
+                col_state = find_col(['state'])
+                col_unit = find_col(['unit id', 'generator', 'boiler'])
+                col_fuel = find_col(['primary fuel', 'fuel type', 'fuel'])
+                col_co2 = find_col(['co2', 'carbon dioxide'])
+                col_so2 = find_col(['so2', 'sulfur dioxide'])
+                col_nox = find_col(['nox', 'nitrogen oxides', 'no x'])
+                col_heat = find_col(['heat input'])
+                col_date = find_col(['date', 'year'])
+                col_hour = find_col(['hour'])
+
+                note_text = request.form.get('dataset_note', '').strip()
+                timestamp_str = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+                
+                new_dataset = UploadedDataset()
+                new_dataset.filename = file.filename
+                new_dataset.notes = note_text or "No description provided"
+                new_dataset.upload_time = timestamp_str
+                new_dataset.row_count = len(df)
+                db.session.add(new_dataset)
+                db.session.flush()
 
                 records = []
                 for _, row in df.iterrows():
-                    fac_id = str(row[col_fac_id]).split('.')[0] if col_fac_id and pd.notna(row[col_fac_id]) else "Unknown"
-                    fac_name = str(row[col_fac_name]) if col_fac_name and pd.notna(row[col_fac_name]) else "Unknown Facility"
-                    st = str(row[col_state]) if col_state and pd.notna(row[col_state]) else ""
-                    rec_date = str(row[col_date]).strip() if col_date and pd.notna(row[col_date]) else "Unknown Date"
-                    unit = str(row[col_unit]) if col_unit and pd.notna(row[col_unit]) else ""
-                    fuel = str(row[col_fuel]) if col_fuel and pd.notna(row[col_fuel]) else "Unknown"
+                    # Fallback defaults if columns are missing
+                    fac_id = str(row[col_fac_id]).split('.')[0] if col_fac_id and pd.notna(row[col_fac_id]) else "1353"
+                    fac_name = str(row[col_fac_name]) if col_fac_name and pd.notna(row[col_fac_name]) else "Generating Facility"
+                    st = str(row[col_state]) if col_state and pd.notna(row[col_state]) else "KY"
+                    unit = str(row[col_unit]) if col_unit and pd.notna(row[col_unit]) else "1"
+                    fuel = str(row[col_fuel]) if col_fuel and pd.notna(row[col_fuel]) else "Coal"
 
                     def parse_num(val):
                         try:
+                            # Remove commas if numbers are formatted as strings like "8,450,120"
+                            if isinstance(val, str):
+                                val = val.replace(',', '')
                             return float(val) if pd is not None and pd.notna(val) else 0.0
                         except (ValueError, TypeError):
                             return 0.0
@@ -139,18 +187,38 @@ def upload():
                     nox = parse_num(row[col_nox]) if col_nox else 0.0
                     heat = parse_num(row[col_heat]) if col_heat else 0.0
 
+                    rec_date = "2024"
+                    if col_date and pd.notna(row[col_date]):
+                        rec_date = str(row[col_date]).strip()
+
+                    rec_hour = None
+                    if col_hour and pd.notna(row[col_hour]):
+                        try:
+                            hr_val = int(float(row[col_hour]))
+                            if 0 <= hr_val <= 23:
+                                rec_hour = hr_val
+                        except (ValueError, TypeError):
+                            pass
+
                     record = FacilityRecord()
                     record.facility_name = fac_name
                     record.state = st
                     record.co2_mass = co2
+                    record.so2_mass = so2
                     record.nox_mass = nox
                     record.heat_input = heat
-                    record.record_date = rec_date
-                    # Assign fields after construction for model compatibility.
                     record.facility_id = fac_id
                     record.unit_id = unit
                     record.primary_fuel = fuel
+                    record.record_date = rec_date
+                    record.record_hour = rec_hour
+                    record.dataset_id = new_dataset.id
                     records.append(record)
+
+                if not records:
+                    db.session.rollback()
+                    flash("Parsed 0 valid facility records from the CSV. Please check column headers.", "danger")
+                    return redirect(request.url)
 
                 db.session.bulk_save_objects(records)
                 db.session.commit()
@@ -166,7 +234,22 @@ def upload():
             flash("Invalid format. Please upload a .csv file.", "warning")
             return redirect(request.url)
 
-    return render_template("upload.html")
+    datasets = UploadedDataset.query.order_by(UploadedDataset.id.desc()).all()
+    return render_template("upload.html", datasets=datasets)
+
+@app.route("/delete_dataset/<int:dataset_id>", methods=['POST'])
+def delete_dataset(dataset_id):
+    dataset = UploadedDataset.query.get_or_404(dataset_id)
+    
+    # Delete all emission records tied to this specific upload
+    FacilityRecord.query.filter_by(dataset_id=dataset_id).delete()
+    
+    # Delete the dataset log itself
+    db.session.delete(dataset)
+    db.session.commit()
+    
+    flash(f"Deleted dataset '{dataset.filename}' and its records from SQLite.", "info")
+    return redirect(url_for('upload'))
 
 
 @app.route("/facility/<facility_id>")
@@ -181,12 +264,15 @@ def detail(facility_id):
         fac_name = records[0].facility_name
         fac_state = records[0].state
         for r in records:
+            date_str = r.record_date or "N/A"
+            hour_str = f" {r.record_hour:02d}:00" if r.record_hour is not None else ""
             mock_units.append({
                 "id": r.unit_id or "General",
+                "date_time": f"{date_str}{hour_str}",
                 "type": "Boiler / Turbine",
                 "fuel": r.primary_fuel or "N/A",
                 "control": "Standard Monitors",
-                "hours": f"{r.co2_mass:,.0f} tons CO₂"
+                "hours": f"{r.co2_mass:,.2f} tons CO₂"
             })
             
     return render_template("detail.html", facility_id=facility_id, facility_name=fac_name, state=fac_state, units=mock_units)

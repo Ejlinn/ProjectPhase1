@@ -70,8 +70,6 @@
                     </div>
 
                     <div class="d-flex justify-content-end gap-2">
-                        <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES TO THE SUBMIT BUTTON -->
-                        <!-- data-step="2" makes this the second stop on the tutorial tour -->
                         <a href="/" class="btn btn-outline-secondary">Cancel</a>
                         <button type="submit" class="btn btn-success fw-bold px-4"
                             data-bs-toggle="tooltip" 
@@ -82,6 +80,56 @@
                             Validate & Ingest File
                         </button>
                     </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Uploaded Datasets History Table -->
+        <div class="card shadow-sm border mt-4"
+             data-bs-toggle="tooltip" 
+             title="View and manage all datasets currently stored in SQLite."
+             data-intro="Step 4: Dataset Management. Every uploaded file is logged here with its timestamp and row count. Click Delete to remove a specific dataset and its records from the database."
+             data-step="4">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title h6 mb-0 fw-bold">Uploaded Datasets History</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0 align-middle">
+                    <thead class="table-light small text-uppercase">
+                        <tr>
+                            <th>Filename</th>
+                            <th>Description / Notes</th>
+                            <th>Uploaded At</th>
+                            <th class="text-end">Records</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if datasets %}
+                            {% for ds in datasets %}
+                            <tr>
+                                <td class="fw-bold">{{ ds.filename }}</td>
+                                <td class="text-muted small">{{ ds.notes }}</td>
+                                <td class="mono-num small">{{ ds.upload_time }}</td>
+                                <td class="text-end mono-num">{{ ds.row_count }}</td>
+                                <td class="text-center">
+                                    <form action="/delete_dataset/{{ ds.id }}" method="POST" class="d-inline" onsubmit="return confirm('Delete {{ ds.filename }} and all associated records?');">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm py-0">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">
+                                    No datasets uploaded yet.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
                 </form>
             </div>
