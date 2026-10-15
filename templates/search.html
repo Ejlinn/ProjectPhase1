@@ -4,6 +4,24 @@
 
 {% block content %}
 
+<!-- Sortable column header: clicking cycles ascending -> descending -> unsorted.
+     Sorting happens in the database, so it applies to ALL pages of results, not just the visible one. -->
+{% macro sort_th(label, key, extra_class='') %}
+    {% if sort != key %}
+        {% set next_url = url_with(sort=key, dir='asc', page=None) %}
+        {% set icon = '↕' %}
+    {% elif sort_dir == 'asc' %}
+        {% set next_url = url_with(sort=key, dir='desc', page=None) %}
+        {% set icon = '↑' %}
+    {% else %}
+        {% set next_url = url_with(sort=None, dir=None, page=None) %}
+        {% set icon = '↓' %}
+    {% endif %}
+    <th scope="col" class="small text-uppercase {{ extra_class }}">
+        <a href="{{ next_url }}" class="text-decoration-none text-reset">{{ label }} <span class="sort-icon">{{ icon }}</span></a>
+    </th>
+{% endmacro %}
+
 <!-- JINJA LOGIC: Flash messages for success/errors on the home page -->
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -26,110 +44,140 @@
                 <h5 class="card-title h6 mb-0 fw-bold">Search Filters</h5>
             </div>
             <div class="card-body">
-                <!-- Using GET means the form selections will show up in the URL (e.g. /?state=KY&fuel=Coal) -->
+                <!-- Using GET means the form selections show up in the URL (e.g. /?state=KY&fuel=Coal), so searches can be bookmarked and shared -->
                 <form action="/" method="GET">
-                    
-                    <div class="mb-3">
-                    <label for="state" class="form-label small fw-bold">State</label>
-                    
-                    <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES -->
-                    <select id="state" name="state" class="form-select form-select-sm"
-                        data-bs-toggle="tooltip" 
-                        title="Filter the database to only show power plants in a specific state."
-                        data-intro="You can filter the massive EPA dataset by state to find local emissions."
+
+                    <!-- Gemini Semantic Search Bar -->
+                    <div class="mb-3 p-3 bg-light border rounded"
+                        data-bs-toggle="tooltip"
+                        title="Type a natural question and let AI extract your query filters."
+                        data-intro="AI Search: Type a sentence like 'Find coal plants in Texas over 50k tons' to search using natural language."
                         data-step="1">
-                        <option value="">-- All States --</option>
-                        <option value="KY">Kentucky (KY)</option>
-                        <option value="IN">Indiana (IN)</option>
-                        <option value="OH">Ohio (OH)</option>
-                        <option value="TN">Tennessee (TN)</option>
-                    </select>
-                </div>
+                        <label class="form-label small fw-bold text-success">AI Natural Language Search</label>
+                        <div class="input-group input-group-sm">
+                            <input type="text" name="prompt" class="form-control" placeholder="Ask AI: Find coal plants in KY..." value="{{ semantic_prompt or '' }}">
+                            <button type="submit" formaction="/semantic_search" class="btn btn-dark">Ask AI</button>
+                        </div>
+                    </div>
 
-                <div class="mb-3">
-                    <label for="fuel" class="form-label small fw-bold">Primary Fuel</label>
-                    
-                    <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES -->
-                    <select id="fuel" name="fuel" class="form-select form-select-sm"
-                        data-bs-toggle="tooltip" 
-                        title="Find plants based on what they burn for power."
-                        data-intro="You can also narrow down results by the type of fuel the facility uses, like Coal or Natural Gas."
-                        data-step="2">
-                        <option value="">-- All Fuel Types --</option>
-                        <option value="Coal">Coal</option>
-                        <option value="Pipeline Natural Gas">Natural Gas</option>
-                        <option value="Diesel Oil">Diesel Oil</option>
-                    </select>
-                </div>
+                    <div class="mb-3">
+                        <label for="state" class="form-label small fw-bold">State</label>
+                        <select id="state" name="state" class="form-select form-select-sm"
+                            data-bs-toggle="tooltip"
+                            title="Filter the database to only show power plants in a specific state."
+                            data-intro="You can filter the massive EPA dataset by state to find local emissions."
+                            data-step="2">
+                            <option value="">-- All States --</option>
+                            {% for code, name in us_states.items() %}
+                            <option value="{{ code }}" {{ 'selected' if filters.state == code }}>{{ name }} ({{ code }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-               <!-- Step 3: Calendar Date Range with Tooltips & Tutorial -->
-                    <!-- Step 3: Calendar Date Range with Tooltips & Tutorial -->
-                    <!-- Step 3: Calendar Date & Time Range with Tooltips & Tutorial -->
+                    <div class="mb-3">
+                        <label for="fuel" class="form-label small fw-bold">Primary Fuel</label>
+                        <select id="fuel" name="fuel" class="form-select form-select-sm"
+                            data-bs-toggle="tooltip"
+                            title="Find plants based on what they burn for power."
+                            data-intro="You can also narrow down results by the type of fuel the facility uses, like Coal or Natural Gas."
+                            data-step="3">
+                            <option value="">-- All Fuel Types --</option>
+                            <option value="Coal" {{ 'selected' if filters.fuel == 'Coal' }}>Coal</option>
+                            <option value="Pipeline Natural Gas" {{ 'selected' if filters.fuel == 'Pipeline Natural Gas' }}>Natural Gas</option>
+                            <option value="Diesel Oil" {{ 'selected' if filters.fuel == 'Diesel Oil' }}>Diesel Oil</option>
+                        </select>
+                    </div>
+
+                    <!-- Reporting year + unit ID -->
+                    <div class="row g-2 mb-3"
+                        data-bs-toggle="tooltip"
+                        title="Filter by reporting year, or search for a specific generating unit."
+                        data-intro="Reporting Year & Unit: Limit results to one year (e.g. 2024) or search for a specific boiler/turbine unit ID."
+                        data-step="4">
+                        <div class="col-6">
+                            <label for="year" class="form-label small fw-bold">Year</label>
+                            <select id="year" name="year" class="form-select form-select-sm">
+                                <option value="">All</option>
+                                {% for y in years %}
+                                <option value="{{ y }}" {{ 'selected' if filters.year == y }}>{{ y }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label for="unit_id" class="form-label small fw-bold">Unit ID</label>
+                            <input type="text" id="unit_id" name="unit_id" class="form-control form-control-sm mono-num" placeholder="e.g. 1" value="{{ filters.unit_id or '' }}">
+                        </div>
+                    </div>
+
+                    <!-- Calendar Date & Time Range -->
                     <div class="mb-3"
-                        data-bs-toggle="tooltip" 
+                        data-bs-toggle="tooltip"
                         title="Pick a date range and specific hours (0-23) to filter emissions."
-                        data-intro="Step 3: Time Period & Hour. Select a calendar date range and specific operating hours (0:00 to 23:00) to isolate emissions."
-                        data-step="3">
+                        data-intro="Time Period & Hour: Select a calendar date range and specific operating hours (0:00 to 23:00) to isolate emissions."
+                        data-step="5">
                         <label class="form-label small fw-bold">Time Period</label>
                         <div class="mb-2">
                             <span class="text-muted small d-block mb-1">From Date</span>
-                            <input type="date" id="start_date" name="start_date" class="form-control form-control-sm">
+                            <input type="date" id="start_date" name="start_date" class="form-control form-control-sm" value="{{ filters.start_date or '' }}">
                         </div>
                         <div class="mb-2">
                             <span class="text-muted small d-block mb-1">To Date</span>
-                            <input type="date" id="end_date" name="end_date" class="form-control form-control-sm">
+                            <input type="date" id="end_date" name="end_date" class="form-control form-control-sm" value="{{ filters.end_date or '' }}">
                         </div>
                         <div class="row g-2 mt-1">
                             <div class="col-6">
                                 <span class="text-muted small d-block mb-1">Start Hour</span>
-                                <input type="number" id="start_hour" name="start_hour" class="form-control form-control-sm mono-num" min="0" max="23" placeholder="0 (12am)">
+                                <input type="number" id="start_hour" name="start_hour" class="form-control form-control-sm mono-num" min="0" max="23" placeholder="0 (12am)" value="{{ filters.start_hour or '' }}">
                             </div>
                             <div class="col-6">
                                 <span class="text-muted small d-block mb-1">End Hour</span>
-                                <input type="number" id="end_hour" name="end_hour" class="form-control form-control-sm mono-num" min="0" max="23" placeholder="23 (11pm)">
+                                <input type="number" id="end_hour" name="end_hour" class="form-control form-control-sm mono-num" min="0" max="23" placeholder="23 (11pm)" value="{{ filters.end_hour or '' }}">
                             </div>
                         </div>
                     </div>
 
-                    <!-- Step 4: Multi-Pollutant Threshold with Tooltips & Tutorial -->
+                    <!-- Multi-Pollutant Range -->
                     <div class="mb-3"
-                        data-bs-toggle="tooltip" 
-                        title="Choose a pollutant (CO2, SO2, or NOx) and specify a minimum emissions threshold."
-                        data-intro="Step 4: Emissions Thresholds. Select whether you want to screen for CO₂, SO₂, or NOₓ, then set a minimum tonnage threshold."
-                        data-step="4">
-                        <label class="form-label small fw-bold">Minimum Emissions (Tons)</label>
-                        <div class="input-group input-group-sm">
-                            <select id="pollutant_type" name="pollutant_type" class="form-select" style="max-width: 90px;">
-                                <option value="co2">CO₂</option>
-                                <option value="so2">SO₂</option>
-                                <option value="nox">NOx</option>
-                            </select>
-                            <input type="number" id="min_emissions" name="min_emissions" class="form-control mono-num" placeholder="e.g. 50000">
+                        data-bs-toggle="tooltip"
+                        title="Choose a pollutant (CO2, SO2, or NOx) and set a minimum and/or maximum in tons."
+                        data-intro="Emissions Range: Pick CO₂, SO₂, or NOₓ, then set a minimum and/or maximum tonnage (e.g. CO₂ above 500,000 or SO₂ below 500)."
+                        data-step="6">
+                        <label class="form-label small fw-bold">Emissions Range (Tons)</label>
+                        <select id="pollutant_type" name="pollutant_type" class="form-select form-select-sm">
+                            <option value="co2" {{ 'selected' if filters.get('pollutant_type', 'co2') == 'co2' }}>CO₂</option>
+                            <option value="so2" {{ 'selected' if filters.pollutant_type == 'so2' }}>SO₂</option>
+                            <option value="nox" {{ 'selected' if filters.pollutant_type == 'nox' }}>NOx</option>
+                        </select>
+                        <div class="input-group input-group-sm mt-1">
+                            <span class="input-group-text">Min</span>
+                            <input type="number" id="min_emissions" name="min_emissions" class="form-control mono-num" placeholder="e.g. 50000" min="0" value="{{ filters.min_emissions or '' }}">
+                        </div>
+                        <div class="input-group input-group-sm mt-1">
+                            <span class="input-group-text">Max</span>
+                            <input type="number" id="max_emissions" name="max_emissions" class="form-control mono-num" placeholder="e.g. 500" min="0" value="{{ filters.max_emissions or '' }}">
                         </div>
                     </div>
 
-                    <!-- Step 5: Direct Search Query with Tooltips & Tutorial -->
+                    <!-- Direct Search Query -->
                     <div class="mb-4">
                         <label for="facility_query" class="form-label small fw-bold">Facility Name or EPA ID</label>
-                        <input type="text" id="facility_query" name="facility_query" class="form-control form-control-sm"
-                            data-bs-toggle="tooltip" 
+                        <input type="text" id="facility_query" name="facility_query" class="form-control form-control-sm" value="{{ filters.facility_query or '' }}"
+                            data-bs-toggle="tooltip"
                             title="Directly search for a specific plant by its ORISPL code or name."
-                            data-intro="Step 5: Direct Search. If you know exactly which facility you want, type its name or EPA ID code here."
-                            data-step="5">
+                            data-intro="Direct Search: If you know exactly which facility you want, type its name or EPA ID code here."
+                            data-step="7">
                     </div>
 
-                <div class="d-grid gap-2">
-                    
-                    <!-- ADDED TOOLTIP AND TUTORIAL ATTRIBUTES -->
-                    <button type="submit" class="btn btn-success btn-sm fw-bold"
-                        data-bs-toggle="tooltip" 
-                        title="Run the SQLite database query with your selected filters."
-                        data-intro="Step 6: Execute Query. Click here to run your query and refresh the results table."
-                        data-step="6">
-                        Apply Filters
-                    </button>
-                    <a href="/" class="btn btn-outline-secondary btn-sm">Reset</a>
-                </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-sm fw-bold"
+                            data-bs-toggle="tooltip"
+                            title="Run the SQLite database query with your selected filters."
+                            data-intro="Execute Query: Click here to run your query and refresh the results table."
+                            data-step="8">
+                            Apply Filters
+                        </button>
+                        <a href="/" class="btn btn-outline-secondary btn-sm">Reset</a>
+                    </div>
 
                 </form>
             </div>
@@ -139,13 +187,20 @@
     <!-- RIGHT COLUMN: Search Results Table -->
     <div class="col-lg-9">
         <div class="card shadow-sm border">
-            
+
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                <span class="text-muted small">Showing records from SQLite database</span>
-                <a href="/export" class="btn btn-outline-dark btn-sm fw-bold"
-                   data-bs-toggle="tooltip" title="Download the current table as a CSV file."
-                   data-intro="Step 7: After filtering, click Export CSV to download a clean spreadsheet of your specific results." 
-                   data-step="7" 
+                <span class="text-muted small">
+                    {% if pagination.total %}
+                        Showing {{ pagination.first }}–{{ pagination.last }} of {{ "{:,}".format(pagination.total) }} records
+                    {% else %}
+                        0 records
+                    {% endif %}
+                </span>
+                <!-- The export link carries the current filters, so the CSV matches what is on screen -->
+                <a href="{{ url_for('export', **request.args.to_dict()) }}" class="btn btn-outline-dark btn-sm fw-bold"
+                   data-bs-toggle="tooltip" title="Download all records matching the current filters as a CSV file."
+                   data-intro="Export CSV: After filtering, click here to download a spreadsheet of every record that matches (not just the current page)."
+                   data-step="9"
                    data-position="left">
                    Export CSV
                 </a>
@@ -153,27 +208,23 @@
 
             <div class="table-responsive"
                  data-bs-toggle="tooltip" title="This grid displays the matching database records."
-                 data-intro="Step 7: The Data Grid. Your queried EPA records appear here after applying filters." data-step="7">
+                 data-intro="The Data Grid: Your queried EPA records appear here. Click any column header to sort." data-step="10">
                 <table class="table table-hover table-striped mb-0 align-middle">
                     <thead class="table-light user-select-none">
                         <tr>
-                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(0)">EPA ID <span class="sort-icon">↕</span></th>
-                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(1)">Facility Name <span class="sort-icon">↕</span></th>
-                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(2)">State <span class="sort-icon">↕</span></th>
-                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(3)">Date / Time <span class="sort-icon">↕</span></th>
-                            <th scope="col" class="small text-uppercase cursor-pointer" onclick="sortTable(4)">Primary Fuel <span class="sort-icon">↕</span></th>
-                            <th scope="col" class="small text-uppercase text-end cursor-pointer" onclick="sortTable(5)">CO₂ Mass (Tons) <span class="sort-icon">↕</span></th>
+                            {{ sort_th('EPA ID', 'id') }}
+                            {{ sort_th('Facility Name', 'name') }}
+                            {{ sort_th('State', 'state') }}
+                            {{ sort_th('Date / Time', 'date') }}
+                            {{ sort_th('Primary Fuel', 'fuel') }}
+                            {{ sort_th('CO₂ Mass (Tons)', 'co2', 'text-end') }}
                             <th scope="col" class="small text-uppercase text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- JINJA LOGIC: Check if the 'facilities' list from app.py is empty -->
                         {% if facilities %}
-                            
-                            <!-- JINJA LOGIC: Loop through every item in the 'facilities' list -->
                             {% for fac in facilities %}
                             <tr>
-                                <!-- Inject the data using double curly braces -->
                                 <td class="mono-num fw-bold">{{ fac.id }}</td>
                                 <td>{{ fac.name }}</td>
                                 <td><span class="badge bg-secondary">{{ fac.state }}</span></td>
@@ -181,20 +232,17 @@
                                 <td>{{ fac.fuel }}</td>
                                 <td class="text-end mono-num">{{ fac.co2 }}</td>
                                 <td class="text-center">
-                                    <!-- This builds a unique URL link for each specific facility ID -->
                                     <a href="/facility/{{ fac.id }}" class="btn btn-outline-primary btn-sm py-0"
                                        data-bs-toggle="tooltip" title="View in-depth metrics and unit configurations for this specific power plant."
-                                       data-intro="Step 9: Inspection. Click 'Details' on any row to drill down into that specific power plant's individual smokestacks and emissions." data-step="9">
+                                       data-intro="Inspection: Click 'Details' on any row to drill down into that specific power plant's individual smokestacks and emissions." data-step="11">
                                        Details
                                     </a>
                                 </td>
                             </tr>
                             {% endfor %}
-                            
                         {% else %}
-                            <!-- If Ejlin's database returns zero results, show this empty row instead -->
                             <tr>
-                                <td colspan="6" class="text-center py-4 text-muted">
+                                <td colspan="7" class="text-center py-4 text-muted">
                                     No matching facilities found. Try adjusting your search filters or uploading data.
                                 </td>
                             </tr>
@@ -202,77 +250,32 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Pagination -->
+            {% if pagination.pages > 1 %}
+            <div class="card-footer bg-white">
+                <nav aria-label="Results pages">
+                    <ul class="pagination pagination-sm justify-content-center mb-0 flex-wrap">
+                        <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+                            <a class="page-link" href="{{ url_with(page=pagination.prev_num) if pagination.has_prev else '#' }}">&laquo; Prev</a>
+                        </li>
+                        {% for p in pagination.iter_pages() %}
+                            {% if p %}
+                            <li class="page-item {{ 'active' if p == pagination.page }}">
+                                <a class="page-link" href="{{ url_with(page=p) }}">{{ p }}</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled"><span class="page-link">…</span></li>
+                            {% endif %}
+                        {% endfor %}
+                        <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+                            <a class="page-link" href="{{ url_with(page=pagination.next_num) if pagination.has_next else '#' }}">Next &raquo;</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
-<script>
-let sortDirections = {};
-
-function sortTable(columnIndex) {
-    const table = document.querySelector(".table-results") || document.querySelector("table");
-    const tbody = table.querySelector("tbody");
-    const rows = Array.from(tbody.querySelectorAll("tr"));
-    
-    // Ignore empty state rows
-    if (rows.length === 1 && rows[0].querySelector("td").getAttribute("colspan")) {
-        return;
-    }
-
-    const headers = table.querySelectorAll("th");
-
-    // Determine direction: true = asc, false = desc, undefined = default/reset
-    let dir = sortDirections[columnIndex];
-    if (dir === undefined || dir === false) {
-        sortDirections[columnIndex] = true; // Ascending
-    } else if (dir === true) {
-        sortDirections[columnIndex] = false; // Descending
-    } else {
-        sortDirections[columnIndex] = undefined; // Reset
-    }
-
-    const currentDir = sortDirections[columnIndex];
-
-    // Reset arrows on all other headers to neutral
-    headers.forEach((th, idx) => {
-        const icon = th.querySelector(".sort-icon");
-        if (icon && idx !== columnIndex) {
-            sortDirections[idx] = undefined;
-            icon.innerText = "↕";
-        }
-    });
-
-    // Update arrow on the currently active column
-    const activeIcon = headers[columnIndex].querySelector(".sort-icon");
-    if (activeIcon) {
-        if (currentDir === true) {
-            activeIcon.innerText = "↑";
-        } else if (currentDir === false) {
-            activeIcon.innerText = "↓";
-        } else {
-            activeIcon.innerText = "↕";
-        }
-    }
-
-    if (currentDir === undefined) {
-        location.reload();
-        return;
-    }
-
-    rows.sort((a, b) => {
-        let cellA = a.querySelectorAll("td")[columnIndex].innerText.trim();
-        let cellB = b.querySelectorAll("td")[columnIndex].innerText.trim();
-
-        let numA = parseFloat(cellA.replace(/,/g, ''));
-        let numB = parseFloat(cellB.replace(/,/g, ''));
-
-        if (!isNaN(numA) && !isNaN(numB)) {
-            return currentDir ? numA - numB : numB - numA;
-        }
-
-        return currentDir ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
-    });
-
-    rows.forEach(row => tbody.appendChild(row));
-}
-</script>
 {% endblock %}

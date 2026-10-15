@@ -1,8 +1,8 @@
 @echo off
-title EPA Data Explorer Quickstart
-echo ===================================================
+cd /d "%~dp0"
+echo ========================================
 echo Starting epaData Explorer...
-echo ===================================================
+echo ========================================
 
 if not exist venv (
     echo Creating virtual environment...
@@ -12,8 +12,13 @@ if not exist venv (
 echo Activating virtual environment...
 call venv\Scripts\activate
 
-echo Checking dependencies...
-pip install -r requirements.txt
+echo Checking and installing dependencies...
+python -m pip install --upgrade pip
+if exist requirements.txt (
+    pip install -r requirements.txt
+) else (
+    echo Warning: requirements.txt not found!
+)
 
 echo Launching Flask Server...
 python app.py

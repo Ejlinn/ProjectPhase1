@@ -1,26 +1,32 @@
 # epaData Explorer
 
-A Flask and SQLite web application for ingesting, querying, inspecting, and exporting power sector emissions records collected through EPA Clean Air Markets Division (CAMPD) programs.
+A Flask and SQLite web application for ingesting, querying, inspecting, and exporting power sector emissions records collected through EPA Clean Air Markets Division (CAMPD) programs, featuring live API integration and Gemini-powered semantic search.
 
 ## Features
 
-- **Multi-Parameter Search & Filter (`/`)**\
-  Search facility emissions records by state, primary fuel, calendar date range, pollutant thresholds, facility name, or ORISPL facility ID.
+- **Multi-Parameter Search & Filter (`/`)**  
+  Search facility emissions records by state, primary fuel, calendar date range, specific hours, pollutant thresholds, facility name, or ORISPL facility ID.
 
-- **Dataset Ingestion (`/upload`)**\
-  Upload raw CAMPD `.csv` files with dynamic column matching and automated ingestion into SQLite using Pandas.
+- **AI Semantic Search (`/semantic_search`)**  
+  Enter natural language prompts (e.g., "Find coal plants in Kentucky emitting over 50k tons of CO2") to have Gemini dynamically translate user intent into database filters.
 
-- **CSV Export (`/export`)**\
+- **Dataset Ingestion & Management (`/upload`)**  
+  Upload raw CAMPD `.csv` files with dynamic column matching, view dataset upload history (including timestamps and row counts), and delete specific datasets.
+
+- **Live EPA API Integration (`/fetch_live_api`)**  
+  Fetch current power sector emissions records directly from the live EPA CAMPD web service using secure API key headers.
+
+- **Interactive Table Sorting**  
+  Click any column header to toggle between ascending, descending, and neutral sorting with dynamic arrow indicators.
+
+- **CSV Export (`/export`)**  
   Generate and download structured CSV files containing records that match the current database query.
 
-- **Facility Details (`/facility/<id>`)**\
+- **Facility Details (`/facility/<id>`)**  
   View facility information, location, regulatory context, and unit-level emissions data.
 
-- **Interactive Guided Tutorial**\
-  Use the **Start Tutorial** option in the navigation bar to walk through the application's major controls and features.
-
-- **Contextual Tooltips**\
-  Hover over search controls, date fields, table actions, and file inputs to view additional guidance.
+- **Interactive Guided Tutorial & Tooltips**  
+  Use the **Start Tutorial** option in the navigation bar to walk through application controls, supported by contextual Bootstrap tooltips.
 
 ## Tech Stack
 
@@ -28,31 +34,45 @@ A Flask and SQLite web application for ingesting, querying, inspecting, and expo
 - **Database:** SQLite
 - **ORM:** Flask-SQLAlchemy
 - **Data Processing:** Pandas
+- **AI / LLM:** Google GenAI SDK (Gemini)
 - **Frontend:** Jinja2, Bootstrap 5, Intro.js
 
 ## Project Structure
 
 ```text
-├── app.py                  # Flask routes, filtering, CSV ingestion, and export
-├── models.py               # SQLAlchemy database models
+├── app.py                  # Flask routes, filtering, CSV ingestion, API streaming, and export
+├── models.py               # SQLAlchemy database models (FacilityRecord & UploadedDataset)
 ├── requirements.txt        # Python package dependencies
 ├── README.md               # Project documentation
 ├── run_app.bat             # Windows startup script
 ├── run_app.sh              # macOS/Linux startup script
 └── templates/
     ├── base.html           # Main layout, navigation, tutorial, and tooltips
-    ├── search.html         # Search filters, results table, and export controls
-    ├── upload.html         # CSV upload and validation interface
-    └── detail.html         # Facility and unit-level details
+    ├── search.html         # Search filters, AI prompt bar, sortable results table, and export controls
+    ├── upload.html         # CSV upload, dataset history log, and live API trigger
+    └── detail.html         # Facility and unit-level details with timestamp breakdowns
 ```
 
 ## Database Schema
 
-The SQLite database stores CAMPD unit-level records in the `facility_records` table.
+The SQLite database stores records across two core tables:
+
+### 1. `uploaded_datasets`
 
 | Column Name     | Type        | Description                                              |
 | :-------------- | :---------- | :------------------------------------------------------- |
 | `id`            | Integer     | Primary key                                              |
+| `filename`      | String(255) | Name of the uploaded file or API stream                  |
+| `notes`         | String(500) | Optional description or upload notes                     |
+| `upload_time`   | String(50)  | Formatted timestamp of when it was added                 |
+| `row_count`     | Integer     | Total records imported                                   |
+
+### 2. `facility_records`
+
+| Column Name     | Type        | Description                                              |
+| :-------------- | :---------- | :------------------------------------------------------- |
+| `id`            | Integer     | Primary key                                              |
+| `dataset_id`    | Integer     | Foreign key linked to `uploaded_datasets.id`             |
 | `facility_id`   | String(50)  | EPA ORISPL facility identifier                           |
 | `facility_name` | String(255) | Name of the generating station                           |
 | `state`         | String(10)  | Two-letter state postal code                             |
@@ -63,6 +83,7 @@ The SQLite database stores CAMPD unit-level records in the `facility_records` ta
 | `nox_mass`      | Float       | Nitrogen oxides emissions in short tons                  |
 | `heat_input`    | Float       | Total heat input in mmBtu                                |
 | `record_date`   | String(20)  | Operating date or collection year from CAMPD source data |
+| `record_hour`   | Integer     | Operating hour (0–23) if available                       |
 
 ## Installation & Setup
 
@@ -133,40 +154,21 @@ The application will be available at:
 
 ## Usage Guide
 
-### System Tour
-
+### 1. System Tour
 Select **Start Tutorial** in the top navigation bar to launch the interactive walkthrough.
 
-### Uploading Data
+### 2. Uploading & Managing Data
+- **Manual CSV Upload:** Navigate to `/upload`, select a `.csv` file, and click **Validate & Ingest File**.
+- **Live API Integration:** Click **Fetch Live Data from EPA API** on the upload page to stream records directly from the EPA CAMPD web service.
+- **Dataset History:** View all imported datasets with timestamps, row counts, and delete specific datasets as needed.
 
-1. Navigate to `/upload`.
-2. Select a `.csv` file downloaded from the EPA CAMPD portal.
-3. Select **Validate & Ingest File**.
-4. The application matches the available columns and loads the records into the SQLite database.
+### 3. Filtering & AI Semantic Search
+- **AI Natural Language Search:** Type queries like "Find coal plants in KY over 50k tons" in the semantic search box and click **Ask AI**.
+- **Standard Filters:** Set states, primary fuels, calendar date ranges, operating hours, and pollutant thresholds, then click **Apply Filters**.
 
-### Filtering Records
-
-Use the search page to filter records by:
-
-- State
-- Primary fuel
-- Start and end dates
-- CO₂ threshold
-- SO₂ threshold
-- NOₓ threshold
-- Facility name
-- ORISPL facility ID
-
-Select **Apply Filters** to update the results.
-
-### Inspecting Facilities
-
-Select **Details** next to a record to view facility information and unit-level emissions data.
-
-### Exporting Data
-
-Select **Export CSV** in the results header to download the records matching the current query.
+### 4. Sorting & Exporting
+- Click any table header ($\updownarrow$) to cycle through ascending, descending, and neutral sorting.
+- Select **Export CSV** in the results header to download records matching the current query.
 
 ## Data Source
-
-The application is designed to work with emissions data obtained from the U.S. Environmental Protection Agency's Clean Air Markets Division (CAMPD) data portal.
+Emissions data is obtained from the U.S. Environmental Protection Agency's Clean Air Markets Division (CAMPD) data portal and public streaming APIs.

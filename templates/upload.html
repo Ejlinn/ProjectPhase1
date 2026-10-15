@@ -84,6 +84,34 @@
             </div>
         </div>
 
+        <div class="card shadow-sm border mt-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title h6 mb-0 fw-bold">Live EPA API Integration</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Fetch annual power sector emissions records directly from the live EPA CAMPD web service. Choose a state and reporting year, and the retrieval is logged in the dataset history below.</p>
+                <form action="/fetch_live_api" method="POST">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-6">
+                            <label for="api_state" class="form-label small fw-bold">State</label>
+                            <select id="api_state" name="state" class="form-select form-select-sm">
+                                {% for code, name in us_states.items() %}
+                                <option value="{{ code }}" {{ 'selected' if code == 'KY' }}>{{ name }} ({{ code }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="api_year" class="form-label small fw-bold">Year</label>
+                            <input type="number" id="api_year" name="year" value="2024" min="1995" max="2100" class="form-control form-control-sm mono-num">
+                        </div>
+                        <div class="col-md-3 d-grid">
+                            <button type="submit" class="btn btn-primary btn-sm fw-bold">Fetch Data</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <!-- Uploaded Datasets History Table -->
         <div class="card shadow-sm border mt-4"
              data-bs-toggle="tooltip" 
@@ -128,10 +156,6 @@
                         {% endif %}
                     </tbody>
                 </table>
-            </div>
-        </div>
-
-                </form>
             </div>
         </div>
 

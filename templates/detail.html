@@ -14,15 +14,18 @@
             </ol>
         </nav>
 
-        <!-- (Keeping the top header hardcoded temporarily until Ejlin connects the Facility object) -->
-        <div class="card shadow-sm border mb-4"
+                <div class="card shadow-sm border mb-4"
              data-bs-toggle="tooltip" title="High-level metadata for this specific facility."
              data-intro="Step 1: Facility Overview. This displays the plant's high-level metadata, such as coordinates, active status, and EPA ID." data-step="1">
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <h2 class="h3 fw-bold text-dark mb-1">Facility View</h2>
-                        <p class="text-muted mb-0">Record details</p>
+                        <h2 class="h3 fw-bold text-dark mb-1">{{ facility_name }}</h2>
+                        <p class="text-muted mb-0">
+                            EPA Facility ID <span class="mono-num fw-bold">{{ facility_id }}</span>
+                            {% if state %}&middot; <span class="badge bg-secondary">{{ state }}</span>{% endif %}
+                            &middot; {{ units|length }} record{{ '' if units|length == 1 else 's' }}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -58,6 +61,8 @@
                             <td><span class="badge bg-secondary">{{ unit.control }}</span></td>
                             <td class="text-end mono-num">{{ unit.hours }}</td>
                         </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">No records found for this facility.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
