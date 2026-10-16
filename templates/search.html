@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 
+{% set active = 'home' %}
+{% set hero_size = 'tall' %}
+{% set hero_title = 'Emissions field guide' %}
+{% set hero_sub = 'Find power plants by state, fuel, year or pollutant, or just do a semantic search with the AI assistant.' %}
+
 {% block title %}Search Facilities | epaData{% endblock %}
 
 {% block content %}
@@ -17,7 +22,7 @@
         {% set next_url = url_with(sort=None, dir=None, page=None) %}
         {% set icon = '↓' %}
     {% endif %}
-    <th scope="col" class="small text-uppercase {{ extra_class }}">
+    <th scope="col" class="small {{ extra_class }}">
         <a href="{{ next_url }}" class="text-decoration-none text-reset">{{ label }} <span class="sort-icon">{{ icon }}</span></a>
     </th>
 {% endmacro %}
@@ -39,21 +44,21 @@
 <div class="row g-4">
     <!-- LEFT COLUMN: Search & Filter Controls -->
     <div class="col-lg-3">
-        <div class="card shadow-sm border">
-            <div class="card-header bg-white py-3">
-                <h5 class="card-title h6 mb-0 fw-bold">Search Filters</h5>
+        <div class="card ranger-panel">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Search filters</h5>
             </div>
             <div class="card-body">
                 <!-- Using GET means the form selections show up in the URL (e.g. /?state=KY&fuel=Coal), so searches can be bookmarked and shared -->
                 <form action="/" method="GET">
 
                     <!-- Gemini Semantic Search Bar -->
-                    <div class="mb-3 p-3 bg-light border rounded"
+                    <div class="mb-3 ask-box"
                         data-bs-toggle="tooltip"
                         title="Type a natural question and let AI extract your query filters."
                         data-intro="AI Search: Type a sentence like 'Find coal plants in Texas over 50k tons' to search using natural language."
                         data-step="1">
-                        <label class="form-label small fw-bold text-success">AI Natural Language Search</label>
+                        <label class="form-label small fw-bold">Semantic Search</label>
                         <div class="input-group input-group-sm">
                             <input type="text" name="prompt" class="form-control" placeholder="Ask AI: Find coal plants in KY..." value="{{ semantic_prompt or '' }}">
                             <button type="submit" formaction="/semantic_search" class="btn btn-dark">Ask AI</button>
@@ -67,7 +72,7 @@
                             title="Filter the database to only show power plants in a specific state."
                             data-intro="You can filter the massive EPA dataset by state to find local emissions."
                             data-step="2">
-                            <option value="">-- All States --</option>
+                            <option value="">All states</option>
                             {% for code, name in us_states.items() %}
                             <option value="{{ code }}" {{ 'selected' if filters.state == code }}>{{ name }} ({{ code }})</option>
                             {% endfor %}
@@ -75,13 +80,13 @@
                     </div>
 
                     <div class="mb-3">
-                        <label for="fuel" class="form-label small fw-bold">Primary Fuel</label>
+                        <label for="fuel" class="form-label small fw-bold">Primary fuel</label>
                         <select id="fuel" name="fuel" class="form-select form-select-sm"
                             data-bs-toggle="tooltip"
                             title="Find plants based on what they burn for power."
                             data-intro="You can also narrow down results by the type of fuel the facility uses, like Coal or Natural Gas."
                             data-step="3">
-                            <option value="">-- All Fuel Types --</option>
+                            <option value="">All fuel types</option>
                             <option value="Coal" {{ 'selected' if filters.fuel == 'Coal' }}>Coal</option>
                             <option value="Pipeline Natural Gas" {{ 'selected' if filters.fuel == 'Pipeline Natural Gas' }}>Natural Gas</option>
                             <option value="Diesel Oil" {{ 'selected' if filters.fuel == 'Diesel Oil' }}>Diesel Oil</option>
@@ -115,7 +120,7 @@
                         title="Pick a date range and specific hours (0-23) to filter emissions."
                         data-intro="Time Period & Hour: Select a calendar date range and specific operating hours (0:00 to 23:00) to isolate emissions."
                         data-step="5">
-                        <label class="form-label small fw-bold">Time Period</label>
+                        <label class="form-label small fw-bold">Time period</label>
                         <div class="mb-2">
                             <span class="text-muted small d-block mb-1">From Date</span>
                             <input type="date" id="start_date" name="start_date" class="form-control form-control-sm" value="{{ filters.start_date or '' }}">
@@ -142,7 +147,7 @@
                         title="Choose a pollutant (CO2, SO2, or NOx) and set a minimum and/or maximum in tons."
                         data-intro="Emissions Range: Pick CO₂, SO₂, or NOₓ, then set a minimum and/or maximum tonnage (e.g. CO₂ above 500,000 or SO₂ below 500)."
                         data-step="6">
-                        <label class="form-label small fw-bold">Emissions Range (Tons)</label>
+                        <label class="form-label small fw-bold">Emissions range (tons)</label>
                         <select id="pollutant_type" name="pollutant_type" class="form-select form-select-sm">
                             <option value="co2" {{ 'selected' if filters.get('pollutant_type', 'co2') == 'co2' }}>CO₂</option>
                             <option value="so2" {{ 'selected' if filters.pollutant_type == 'so2' }}>SO₂</option>
@@ -160,7 +165,7 @@
 
                     <!-- Direct Search Query -->
                     <div class="mb-4">
-                        <label for="facility_query" class="form-label small fw-bold">Facility Name or EPA ID</label>
+                        <label for="facility_query" class="form-label small fw-bold">Facility name or EPA ID</label>
                         <input type="text" id="facility_query" name="facility_query" class="form-control form-control-sm" value="{{ filters.facility_query or '' }}"
                             data-bs-toggle="tooltip"
                             title="Directly search for a specific plant by its ORISPL code or name."
@@ -174,7 +179,7 @@
                             title="Run the SQLite database query with your selected filters."
                             data-intro="Execute Query: Click here to run your query and refresh the results table."
                             data-step="8">
-                            Apply Filters
+                            Apply filters
                         </button>
                         <a href="/" class="btn btn-outline-secondary btn-sm">Reset</a>
                     </div>
@@ -186,9 +191,9 @@
 
     <!-- RIGHT COLUMN: Search Results Table -->
     <div class="col-lg-9">
-        <div class="card shadow-sm border">
+        <div class="card">
 
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <span class="text-muted small">
                     {% if pagination.total %}
                         Showing {{ pagination.first }}–{{ pagination.last }} of {{ "{:,}".format(pagination.total) }} records
@@ -218,7 +223,7 @@
                             {{ sort_th('Date / Time', 'date') }}
                             {{ sort_th('Primary Fuel', 'fuel') }}
                             {{ sort_th('CO₂ Mass (Tons)', 'co2', 'text-end') }}
-                            <th scope="col" class="small text-uppercase text-center">Action</th>
+                            <th scope="col" class="small text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -229,7 +234,8 @@
                                 <td>{{ fac.name }}</td>
                                 <td><span class="badge bg-secondary">{{ fac.state }}</span></td>
                                 <td class="mono-num small text-muted">{{ fac.date_time }}</td>
-                                <td>{{ fac.fuel }}</td>
+                                {% set fl = (fac.fuel or '')|lower %}
+                                <td><span class="fuel-dot fuel-{{ 'coal' if 'coal' in fl else ('gas' if 'gas' in fl else ('oil' if ('oil' in fl or 'diesel' in fl) else 'other')) }}" aria-hidden="true"></span>{{ fac.fuel }}</td>
                                 <td class="text-end mono-num">{{ fac.co2 }}</td>
                                 <td class="text-center">
                                     <a href="/facility/{{ fac.id }}" class="btn btn-outline-primary btn-sm py-0"
@@ -242,8 +248,9 @@
                             {% endfor %}
                         {% else %}
                             <tr>
-                                <td colspan="7" class="text-center py-4 text-muted">
-                                    No matching facilities found. Try adjusting your search filters or uploading data.
+                                <td colspan="7" class="text-center py-5">
+                                    <div class="fw-bold mb-1">No plants match these filters.</div>
+                                    <div class="text-muted">Loosen a filter, or <a href="/upload">add data</a> for this state.</div>
                                 </td>
                             </tr>
                         {% endif %}
@@ -253,7 +260,7 @@
 
             <!-- Pagination -->
             {% if pagination.pages > 1 %}
-            <div class="card-footer bg-white">
+            <div class="card-footer">
                 <nav aria-label="Results pages">
                     <ul class="pagination pagination-sm justify-content-center mb-0 flex-wrap">
                         <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
