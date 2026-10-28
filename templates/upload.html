@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 
+{% set active = 'upload' %}
+{% set hero_size = 'compact' %}
+{% set hero_title = 'Add data' %}
+{% set hero_sub = 'Upload a CAMPD file, or pull a state and year straight from the EPA.' %}
+
 {% block title %}Upload EPA Data | epaData{% endblock %}
 
 {% block content %}
@@ -7,7 +12,7 @@
     <div class="col-lg-8">
 
         <div class="d-flex align-items-center justify-content-between border-bottom pb-2 mb-4">
-            <h2 class="h4 fw-bold text-dark mb-0">Import CAMPD Dataset</h2>
+            <h2 class="h4 mb-0">Import CAMPD Dataset</h2>
             <span class="text-muted small">Accepted formats: .csv, .xlsx</span>
         </div>
 
@@ -37,8 +42,8 @@
         </div>
 
         <div class="card shadow-sm border">
-            <div class="card-header bg-white py-3">
-                <h5 class="card-title h6 mb-0 fw-bold">Manual File Submission</h5>
+            <div class="card-header">
+                <h5 class="card-title mb-0">Manual File Submission</h5>
             </div>
             <div class="card-body p-4">
                 
@@ -85,8 +90,8 @@
         </div>
 
         <div class="card shadow-sm border mt-4">
-            <div class="card-header bg-white py-3">
-                <h5 class="card-title h6 mb-0 fw-bold">Live EPA API Integration</h5>
+            <div class="card-header">
+                <h5 class="card-title mb-0">Live EPA API Integration</h5>
             </div>
             <div class="card-body">
                 <p class="text-muted small mb-3">Fetch annual power sector emissions records directly from the live EPA CAMPD web service. Choose a state and reporting year, and the retrieval is logged in the dataset history below.</p>
@@ -118,8 +123,8 @@
              title="View and manage all datasets currently stored in SQLite."
              data-intro="Step 4: Dataset Management. Every uploaded file is logged here with its timestamp and row count. Click Delete to remove a specific dataset and its records from the database."
              data-step="4">
-            <div class="card-header bg-white py-3">
-                <h5 class="card-title h6 mb-0 fw-bold">Uploaded Datasets History</h5>
+            <div class="card-header">
+                <h5 class="card-title mb-0">Uploaded Datasets History</h5>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover table-striped mb-0 align-middle">

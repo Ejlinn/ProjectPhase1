@@ -20,6 +20,9 @@ if exist requirements.txt (
     echo Warning: requirements.txt not found!
 )
 
+echo Seeding TRACI impact factors into database...
+python importtraci.py
+
 echo Launching Flask Server...
 python app.py
 pause

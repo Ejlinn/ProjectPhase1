@@ -5,93 +5,540 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}epaData System{% endblock %}</title>
 
-    <!-- Bootstrap 5 CSS: Pre-made professional styles so our app looks clean -->
+    <!-- Bootstrap 5 CSS: layout grid, forms, tables -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Intro.js CSS: This styles the tutorial highlight boxes and popup text -->
+    <!-- Intro.js CSS: the tutorial highlight boxes and popups -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/intro.js/7.2.0/introjs.min.css" rel="stylesheet">
+    <!-- Fonts: Alfa Slab One (headings, like park signage) + Atkinson Hyperlegible (body and data tables) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 
     <style>
-        /* EPA inspired color scheme */
+        /* ------------------------------------------------------------
+           SAFARI THEME
+           Palette: canopy greens, savanna mango, sage paper.
+           Clay red is reserved for errors.
+           ------------------------------------------------------------ */
         :root {
-            --epa-green: #2b5c46;
-            --epa-dark: #1e293b;
+            --canopy: #183A2A;
+            --canopy-deep: #0F271C;
+            --fern: #3F7A44;
+            --mango: #E9A23B;
+            --mango-deep: #8A5200;      /* mango dark enough for text on paper */
+            --clay: #A8432B;
+            --paper: #EEF0DF;
+            --paper-2: #E2E7CF;
+            --card: #FBFBF2;
+            --ink: #1B2A20;
+            --ink-soft: #4A5B4C;
+            --line: #C4CDA9;
+
+            --font-display: "Alfa Slab One", Rockwell, "Roboto Slab", Georgia, serif;
+            --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+            /* leaf shape: big, small, big, small corners. Used on cards, buttons and alerts */
+            --leaf: 22px 4px 22px 4px;
+            --leaf-sm: 12px 3px 12px 3px;
+
+            /* tell Bootstrap about the palette */
+            --bs-body-bg: var(--paper);
+            --bs-body-color: var(--ink);
+            --bs-body-font-family: var(--font-body);
+            --bs-secondary-color: var(--ink-soft);
+            --bs-border-color: var(--line);
+            --bs-link-color: var(--canopy);
+            --bs-link-hover-color: var(--fern);
+            --bs-link-color-rgb: 24, 58, 42;          /* Bootstrap 5.3 links read the -rgb versions */
+            --bs-link-hover-color-rgb: 63, 122, 68;
         }
 
-        /* Custom styling to keep the site looking like an official scientific tool */
-        .navbar-custom {
-            background-color: var(--epa-dark);
-            border-bottom: 3px solid var(--epa-green);
+        body {
+            font-family: var(--font-body);
+            color: var(--ink);
+            background-color: var(--paper);
+            /* faint leaf outlines, so the page background is not a flat colour */
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg fill='none' stroke='%23C9D3AE' stroke-width='1.5'%3E%3Cpath d='M22 70C22 40 46 22 78 22 78 52 56 74 22 70Z'/%3E%3Cpath d='M26 66L68 30'/%3E%3Cpath d='M112 150C112 126 130 110 154 110 154 134 136 152 112 150Z'/%3E%3Cpath d='M116 146L148 116'/%3E%3C/g%3E%3C/svg%3E");
         }
 
-        /* Monospace font for IDs and numbers so digits line up neatly */
-        .mono-num {
-            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        h1, h2, h3, h4, h5, h6,
+        .h1, .h2, .h3, .h4, .h5, .h6 {
+            font-family: var(--font-display);
+            font-weight: 400;           /* the display face has one weight; bold would be faked */
+            letter-spacing: 0.01em;
+            color: var(--canopy);
+        }
+
+        /* the display face has a single weight: never let .fw-bold fake a heavier one */
+        h1.fw-bold, h2.fw-bold, h3.fw-bold, h4.fw-bold, h5.fw-bold, h6.fw-bold,
+        .h1.fw-bold, .h2.fw-bold, .h3.fw-bold, .h4.fw-bold, .h5.fw-bold, .h6.fw-bold { font-weight: 400 !important; }
+        .text-dark { color: var(--ink) !important; }
+
+        .mono-num { font-variant-numeric: tabular-nums; }
+        .text-uppercase { text-transform: none !important; }   /* sentence case everywhere */
+
+        a:focus-visible, button:focus-visible, .btn:focus-visible,
+        input:focus-visible, select:focus-visible, textarea:focus-visible {
+            outline: 3px solid var(--mango);
+            outline-offset: 2px;
+        }
+
+        /* ------------------------------------------------------------
+           NAVBAR
+           ------------------------------------------------------------ */
+        .navbar-custom { background: var(--canopy-deep); padding-block: .6rem; }
+        .navbar-custom .navbar-brand {
+            font-family: var(--font-display);
+            font-weight: 400;
+            font-size: 1.5rem;
+            color: var(--mango);
+            display: flex; align-items: center; gap: .55rem;
+        }
+        .navbar-custom .navbar-brand svg { flex: none; }
+        .navbar-custom .nav-link {
+            color: #DCE6CB;
+            font-weight: 700;
+            padding: .5rem .9rem;
+            border-bottom: 3px solid transparent;
+            border-radius: 0;
+        }
+        .navbar-custom .nav-link:hover { color: #fff; }
+        .navbar-custom .nav-link.active { color: var(--mango); border-bottom-color: var(--mango); }
+        .navbar-custom .navbar-toggler { border-color: #5F7F63; }
+        .btn-tour {
+            background: transparent;
+            color: var(--mango);
+            border: 2px solid var(--mango);
+            border-radius: var(--leaf-sm);
+            font-weight: 700;
+        }
+        .btn-tour:hover { background: var(--mango); color: var(--ink); }
+        .phase-badge {
+            border: 1px solid #5F7F63; color: #B9CDB0; background: transparent;
+            border-radius: 999px; font-weight: 400; padding: .4em .8em;
+        }
+
+        /* ------------------------------------------------------------
+           HERO: sunset savanna with silhouettes
+           ------------------------------------------------------------ */
+        .hero {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(180deg, #14301F 0%, #1F4A31 36%, #6E8B3A 68%, #E9A23B 100%);
+            color: #FFF1CC;
+        }
+        .hero-copy { position: relative; z-index: 2; }
+        .hero h1 {
+            color: #FFF1CC;
+            font-size: clamp(1.9rem, 4.2vw, 2.9rem);
+            line-height: 1.1;
+            margin: 0 0 .5rem;
+            max-width: 22ch;
+        }
+        .hero p {
+            color: #E1EBD0;
+            font-size: 1.1rem;
+            margin: 0;
+            max-width: 52ch;
+        }
+        .hero--tall .hero-copy { padding: 2.4rem 0 8rem; }
+        .hero--compact .hero-copy { padding: 1.6rem 0 5.4rem; }
+        .hero-land {
+            position: absolute; left: 0; bottom: 0; width: 100%;
+            z-index: 1; display: block;
+        }
+        .hero--tall .hero-land { height: 210px; }
+        .hero--compact .hero-land { height: 150px; }   /* tall enough that the giraffe's head and the sun are not cropped */
+        .hero-vines { position: absolute; top: 0; right: 4%; height: 150px; z-index: 1; opacity: .95; }
+        .hero--compact .hero-vines { height: 110px; }
+
+        /* One orchestrated moment: the scenery rises into place once on page load */
+        @keyframes rise { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+        .hero-land .layer { animation: rise .9s cubic-bezier(.2,.7,.2,1) both; }
+        .hero-land .layer-2 { animation-delay: .12s; }
+        .hero-land .layer-3 { animation-delay: .24s; }
+        .hero-land .layer-4 { animation-delay: .38s; }
+        @media (prefers-reduced-motion: reduce) { .hero-land .layer { animation: none; } }
+
+        /* zebra band between the hero and the content */
+        .zebra {
+            height: 12px;
+            background: repeating-linear-gradient(115deg, var(--canopy-deep) 0 10px, var(--paper) 10px 20px);
+            margin-bottom: 1.75rem;
+        }
+
+        /* ------------------------------------------------------------
+           CARDS: leaf corners and sticker-style offset shadows
+           ------------------------------------------------------------ */
+        .card {
+            background: var(--card);
+            border: 2px solid var(--canopy);
+            border-radius: var(--leaf);
+            box-shadow: 5px 6px 0 rgba(15, 39, 28, .16);
+            overflow: hidden;
+        }
+        .card-header, .card-header.bg-white {
+            background: transparent !important;
+            border-bottom: 2px dashed var(--line);   /* a trail line instead of a solid rule */
+            padding: .9rem 1.25rem;
+        }
+        .card-title { font-family: var(--font-display); font-weight: 400; font-size: 1.05rem; color: var(--canopy); }
+        .card-footer { background: transparent; border-top: 2px dashed var(--line); }
+
+        /* Filter panel: a dark ranger board */
+        .ranger-panel {
+            background: var(--canopy);
+            border-color: var(--canopy-deep);
+            color: #E6EEDA;
+            box-shadow: 5px 6px 0 rgba(15, 39, 28, .35);
+        }
+        .ranger-panel .card-header { border-bottom-color: #3E6B52; }
+        .ranger-panel .card-title { color: var(--mango); }
+        .ranger-panel .form-label { color: #F2F6E8; }
+        .ranger-panel .text-muted { color: #B7C9B0 !important; }
+        .ranger-panel .btn-outline-secondary { color: #DCE6CB; border-color: #6D8F74; }
+        .ranger-panel .btn-outline-secondary:hover { background: #DCE6CB; color: var(--canopy-deep); }
+
+        /* Plain-English search box: the warm highlight on the dark board */
+        .ask-box {
+            background: #F6E4B4;
+            color: var(--ink);
+            border-radius: var(--leaf-sm);
+            padding: .9rem;
+        }
+        .ask-box .form-label { color: var(--canopy); }
+
+        /* ------------------------------------------------------------
+           FORMS
+           ------------------------------------------------------------ */
+        .form-control, .form-select {
+            background-color: #FFFFF8;
+            border: 2px solid var(--line);
+            border-radius: 8px;
+            color: var(--ink);
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--mango);
+            box-shadow: 0 0 0 .22rem rgba(233, 162, 59, .45);
+            background-color: #fff;
+        }
+        .form-text { color: var(--ink-soft); }
+        .input-group-text { background: var(--paper-2); border: 2px solid var(--line); color: var(--ink); }
+
+        /* ------------------------------------------------------------
+           BUTTONS
+           ------------------------------------------------------------ */
+        .btn { border-radius: var(--leaf-sm); font-weight: 700; }
+        .btn-success {
+            --bs-btn-bg: var(--mango); --bs-btn-border-color: #C9811B; --bs-btn-color: var(--ink);
+            --bs-btn-hover-bg: #F4B552; --bs-btn-hover-border-color: #C9811B; --bs-btn-hover-color: var(--ink);
+            --bs-btn-active-bg: #D58F25; --bs-btn-active-border-color: #C9811B; --bs-btn-active-color: var(--ink);
+            --bs-btn-border-width: 2px;
+        }
+        .btn-primary {
+            --bs-btn-bg: var(--fern); --bs-btn-border-color: #2F6034; --bs-btn-color: #fff;
+            --bs-btn-hover-bg: #2F6034; --bs-btn-hover-border-color: #234A27; --bs-btn-hover-color: #fff;
+            --bs-btn-active-bg: #234A27; --bs-btn-active-border-color: #234A27;
+            --bs-btn-border-width: 2px;
+        }
+        .btn-dark {
+            --bs-btn-bg: var(--canopy-deep); --bs-btn-border-color: var(--canopy-deep); --bs-btn-color: var(--mango);
+            --bs-btn-hover-bg: var(--canopy); --bs-btn-hover-border-color: var(--canopy); --bs-btn-hover-color: #FFD98F;
+            --bs-btn-active-bg: var(--canopy); --bs-btn-active-border-color: var(--canopy);
+            --bs-btn-border-width: 2px;
+        }
+        .btn-outline-dark {
+            --bs-btn-color: var(--canopy); --bs-btn-border-color: var(--canopy);
+            --bs-btn-hover-bg: var(--canopy); --bs-btn-hover-border-color: var(--canopy); --bs-btn-hover-color: var(--mango);
+            --bs-btn-active-bg: var(--canopy); --bs-btn-active-border-color: var(--canopy); --bs-btn-active-color: var(--mango);
+            --bs-btn-border-width: 2px;
+        }
+        .btn-outline-primary {
+            --bs-btn-color: var(--canopy); --bs-btn-border-color: var(--fern);
+            --bs-btn-hover-bg: var(--canopy); --bs-btn-hover-border-color: var(--canopy); --bs-btn-hover-color: var(--mango);
+            --bs-btn-active-bg: var(--canopy); --bs-btn-active-border-color: var(--canopy); --bs-btn-active-color: var(--mango);
+            --bs-btn-border-width: 2px;
+        }
+        .btn-outline-secondary {
+            --bs-btn-color: var(--ink-soft); --bs-btn-border-color: #8C9A84;
+            --bs-btn-hover-bg: var(--ink-soft); --bs-btn-hover-border-color: var(--ink-soft); --bs-btn-hover-color: #fff;
+            --bs-btn-border-width: 2px;
+        }
+        .btn-outline-danger {
+            --bs-btn-color: var(--clay); --bs-btn-border-color: var(--clay);
+            --bs-btn-hover-bg: var(--clay); --bs-btn-hover-border-color: var(--clay);
+            --bs-btn-border-width: 2px;
+        }
+
+        /* ------------------------------------------------------------
+           TABLES
+           ------------------------------------------------------------ */
+        .table {
+            --bs-table-bg: transparent;
+            --bs-table-striped-bg: rgba(196, 205, 169, .22);
+            --bs-table-hover-bg: rgba(233, 162, 59, .18);
+            --bs-table-border-color: var(--line);
+            color: var(--ink);
+        }
+        .table thead th, .table-light {
+            --bs-table-bg: var(--paper-2);
+            background: var(--paper-2);
+            color: var(--canopy);
+            font-weight: 700;
+            border-bottom: 3px solid var(--canopy);
+            white-space: nowrap;
+        }
+        .table thead th a { color: inherit; }
+        .table thead th a:hover { color: var(--fern); }
+        .sort-icon { color: var(--mango-deep); font-weight: 400; }
+
+        /* fuel markers: a small leaf, coloured by fuel (the fuel name always sits next to it) */
+        .fuel-dot {
+            display: inline-block; width: .8rem; height: .8rem; margin-right: .5rem; vertical-align: -1px;
+            border-radius: 60% 0 60% 0; background: #9AA595;
+        }
+        .fuel-coal  { background: #2F3A33; }
+        .fuel-gas   { background: #2A8C8C; }
+        .fuel-oil   { background: var(--mango); }
+
+        /* state codes read as little trail markers */
+        .badge.bg-secondary {
+            background: var(--canopy) !important;
+            color: var(--mango);
+            border-radius: 3px 3px 10px 10px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            padding: .4em .65em;
+        }
+
+        /* ------------------------------------------------------------
+           PAGINATION (round pebbles), BREADCRUMB, ALERTS
+           ------------------------------------------------------------ */
+        .pagination { gap: .3rem; }
+        .page-link {
+            border: 2px solid var(--line);
+            border-radius: 999px !important;
+            color: var(--canopy);
+            background: var(--card);
+            font-weight: 700;
+            min-width: 2.2rem; text-align: center;
+        }
+        .page-link:hover { background: var(--paper-2); color: var(--canopy); border-color: var(--fern); }
+        .page-item.active .page-link { background: var(--canopy); border-color: var(--canopy); color: var(--mango); }
+        .page-item.disabled .page-link { background: transparent; color: #7B8A78; }
+
+        .breadcrumb { --bs-breadcrumb-divider: "›"; font-weight: 700; }
+        .breadcrumb-item.active { color: var(--ink-soft); }
+
+        .alert {
+            border-width: 2px;
+            border-radius: var(--leaf-sm);
+            font-weight: 400;
+        }
+        .alert-info    { --bs-alert-bg: #D8EAE3; --bs-alert-border-color: #8DBFB3; --bs-alert-color: #12443A; }
+        .alert-success { --bs-alert-bg: #DCEBC9; --bs-alert-border-color: #97BB7B; --bs-alert-color: #1D4A22; }
+        .alert-warning { --bs-alert-bg: #F9E8BE; --bs-alert-border-color: #E1B352; --bs-alert-color: #5B3A00; }
+        .alert-danger  { --bs-alert-bg: #F4D9CF; --bs-alert-border-color: #CE836C; --bs-alert-color: #6E2412; }
+
+        /* ------------------------------------------------------------
+           FOOTER
+           ------------------------------------------------------------ */
+        .site-footer {
+            background: var(--canopy-deep);
+            color: #B7C9B0;
+            font-size: .95rem;
+            padding: 1.1rem 0;
+            margin-top: 1rem;
+        }
+        .site-footer a { color: var(--mango); }
+
+        /* ------------------------------------------------------------
+           TUTORIAL POPUPS (Intro.js)
+           ------------------------------------------------------------ */
+        .introjs-tooltip {
+            background: var(--card);
+            color: var(--ink);
+            border: 2px solid var(--canopy);
+            border-radius: var(--leaf);
+            font-family: var(--font-body);
+            box-shadow: 5px 6px 0 rgba(15, 39, 28, .3);
+        }
+        .introjs-tooltiptext { font-size: 1rem; line-height: 1.45; }
+        .introjs-button, .introjs-button:hover, .introjs-button:focus {
+            background: var(--mango); color: var(--ink);
+            border: 2px solid #C9811B; border-radius: 999px;
+            text-shadow: none; font-family: var(--font-body); font-weight: 700;
+        }
+        .introjs-button:hover { background: #F4B552; box-shadow: none; }
+        .introjs-disabled, .introjs-disabled:hover { background: var(--paper-2); color: #7B8A78; border-color: var(--line); }
+        .introjs-skipbutton { background: transparent !important; border: 0 !important; color: var(--ink-soft) !important; }
+        .introjs-bullets ul li a.active { background: var(--canopy); }
+        .introjs-helperLayer { border-radius: var(--leaf-sm); box-shadow: rgba(24,58,42,.75) 0 0 1px 2px, rgba(15,39,28,.6) 0 0 0 5000px !important; }
+
+        @media (max-width: 575.98px) {
+            .hero p { font-size: 1rem; }
+            .card { box-shadow: 3px 4px 0 rgba(15, 39, 28, .16); }
         }
     </style>
 </head>
-<body class="bg-light">
+<body>
 
-    <!-- MASTER NAVIGATION BAR: This appears at the top of EVERY single page -->
-    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom mb-4">
+    <!-- MASTER NAVIGATION BAR: appears at the top of every page -->
+    <nav class="navbar navbar-expand-lg navbar-dark navbar-custom">
         <div class="container-fluid px-4">
-            <a class="navbar-brand fw-bold" href="/">
-                <!-- Simple leaf/factory logo icon -->
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-shield-check me-2" viewBox="0 0 16 16">
-                    <path d="M5.338 1.59a61 61 0 0 0-2.837.856.48.48 0 0 0-.328.39c-.554 4.157.726 7.19 2.253 9.188a10.7 10.7 0 0 0 2.287 2.233c.346.244.652.42.893.533q.18.085.293.134a.47.47 0 0 0 .155.038.47.47 0 0 0 .155-.038q.113-.049.293-.134a10.7 10.7 0 0 0 2.287-2.233c1.527-1.997 2.807-5.031 2.253-9.188a.48.48 0 0 0-.328-.39c-.651-.213-1.75-.56-2.837-.855C9.552 1.29 8.531 1.067 8 1.067s-1.552.223-2.662.524z"/>
-                    <path d="M10.854 5.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 7.793l2.646-2.647a.5.5 0 0 1 .708 0"/>
+            <a class="navbar-brand" href="/">
+                <!-- Logo: a smokestack with a sprout where the smoke would be -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="34" viewBox="0 0 30 34" aria-hidden="true">
+                    <path d="M9 14h12l2 18H7z" fill="#F2E6C4"/>
+                    <path d="M8.2 20h13.6l.6 5H7.6z" fill="#A8432B"/>
+                    <path d="M15 14V7" stroke="#6FAF5B" stroke-width="2.4" stroke-linecap="round"/>
+                    <path d="M15 8C15 3 11 1 6 1c0 5 3 7 9 7z" fill="#6FAF5B"/>
+                    <path d="M15 10c0-4 3-6 8-6 0 4-3 6-8 6z" fill="#3F7A44"/>
                 </svg>
-                epaData
+                epaData Safari
             </a>
-            
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
 
-            <!-- Navigation Links -->
             <div class="collapse navbar-collapse" id="navMenu">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item" 
-                        data-bs-toggle="tooltip" title="View the main search dashboard." 
+                    <li class="nav-item"
+                        data-bs-toggle="tooltip" title="View the main search dashboard."
                         data-intro="Navigation: Click here to return to the main Data Explorer." data-step="98">
-                        <a class="nav-link" href="/">Home / Explorer</a>
+                        <a class="nav-link {{ 'active' if active == 'home' }}" href="/">Explorer</a>
                     </li>
-                    <li class="nav-item" 
-                        data-bs-toggle="tooltip" title="Import new EPA files." 
+                    <li class="nav-item"
+                        data-bs-toggle="tooltip" title="Import new EPA files."
                         data-intro="Navigation: Click here to upload new CSV/Excel datasets to the SQLite database." data-step="99">
-                        <a class="nav-link" href="/upload">Upload Datasets</a>
+                        <a class="nav-link {{ 'active' if active == 'upload' }}" href="/upload">Add data</a>
                     </li>
                 </ul>
-                
-                <!-- Tutorial Button: Clicking this starts the step-by-step walkthrough -->
-                 <button class="btn btn-warning btn-sm fw-bold me-3" type="button" onclick="introJs().setOption('exitOnOverlayClick', false).start()">
-                Start Tutorial
+
+                <!-- Tutorial Button: starts the step-by-step walkthrough -->
+                <button class="btn btn-tour btn-sm me-3" type="button" onclick="introJs().setOption('exitOnOverlayClick', false).start()">
+                    Start tutorial
                 </button>
 
-                <!-- Small status badge showing database connection mode -->
-                <span class="badge bg-secondary mono-num">Phase 1: SQLite Storage</span>
+                <span class="badge phase-badge">Phase 1: SQLite storage</span>
             </div>
         </div>
     </nav>
 
-    <!-- THE PLUG-IN SLOT: Jinja puts the unique content of each page right here -->
+    <!-- HERO: pages set hero_title, hero_sub and hero_size ("tall" or "compact") at the top of their file -->
+    <header class="hero hero--{{ hero_size|default('compact') }}">
+        <!-- hanging vines -->
+        <svg class="hero-vines" viewBox="0 0 220 150" aria-hidden="true" preserveAspectRatio="xMaxYMin meet">
+            <g stroke="#2F6B3B" stroke-width="3" fill="none" stroke-linecap="round">
+                <path d="M26 0C22 36 34 66 26 112"/>
+                <path d="M96 0C101 30 88 58 96 92"/>
+                <path d="M160 0C155 48 168 84 160 134"/>
+                <path d="M205 0C202 26 210 44 205 70"/>
+            </g>
+            <g fill="#3E8A47">
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(26 40) rotate(35)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(26 78) rotate(150)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(26 108) rotate(40)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(96 36) rotate(145)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(96 70) rotate(30)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(160 50) rotate(40)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(160 92) rotate(150)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(160 126) rotate(35)"/>
+                <path d="M0 0C8-9 20-9 27 0 20 9 8 9 0 0Z" transform="translate(205 40) rotate(145)"/>
+            </g>
+            <g fill="#58A65A">
+                <path d="M0 0C6-7 15-7 20 0 15 7 6 7 0 0Z" transform="translate(96 52) rotate(150)"/>
+                <path d="M0 0C6-7 15-7 20 0 15 7 6 7 0 0Z" transform="translate(160 70) rotate(30)"/>
+                <path d="M0 0C6-7 15-7 20 0 15 7 6 7 0 0Z" transform="translate(26 60) rotate(30)"/>
+            </g>
+        </svg>
+
+        <div class="container-fluid px-4 hero-copy">
+            <h1>{{ hero_title|default('epaData') }}</h1>
+            {% if hero_sub %}<p>{{ hero_sub }}</p>{% endif %}
+        </div>
+
+        <!-- savanna scene: sun, hills, acacia trees, a giraffe and an elephant -->
+        <svg class="hero-land" viewBox="0 0 1440 220" preserveAspectRatio="xMaxYMax slice" aria-hidden="true">
+            <g class="layer layer-1">
+                <circle cx="660" cy="132" r="90" fill="#F7D774" opacity=".22"/>
+                <circle cx="660" cy="132" r="50" fill="#F9DE85"/>
+                <path d="M0 150C180 112 320 134 480 122 660 108 760 152 940 142 1120 130 1260 106 1440 132V220H0Z" fill="#4C7F3E"/>
+                <!-- birds -->
+                <g fill="none" stroke="#14301F" stroke-width="2.4" stroke-linecap="round">
+                    <path d="M840 70q10-12 20 0 10-12 20 0"/>
+                    <path d="M890 52q7-9 14 0 7-9 14 0"/>
+                </g>
+            </g>
+            <g class="layer layer-2">
+                <path d="M0 176C220 150 380 172 560 160 760 148 900 184 1100 172 1250 162 1360 150 1440 162V220H0Z" fill="#2E5B36"/>
+                <!-- distant acacia -->
+                <g fill="#173D28" transform="translate(800 118) scale(.62)">
+                    <path d="M0 60C0 36-6 18-14 0H-4C4 18 10 36 10 60Z"/>
+                    <ellipse cx="-4" cy="-3" rx="58" ry="11"/>
+                    <ellipse cx="-26" cy="-12" rx="30" ry="8"/>
+                </g>
+            </g>
+            <g class="layer layer-3" fill="#0F271C">
+                <!-- giraffe -->
+                <g transform="translate(1030 84) scale(.98)">
+                    <ellipse cx="40" cy="70" rx="31" ry="15"/>
+                    <path d="M54 64L68 14 78 16 70 72Z"/>
+                    <path d="M67 14L91 8Q98 10 96 16L76 23Z"/>
+                    <path d="M72 11v-8M80 9V1" stroke="#0F271C" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+                    <rect x="17" y="78" width="5" height="38" rx="2"/>
+                    <rect x="27" y="80" width="5" height="36" rx="2"/>
+                    <rect x="50" y="80" width="5" height="36" rx="2"/>
+                    <rect x="59" y="78" width="5" height="38" rx="2"/>
+                    <path d="M10 64Q0 78 4 98" stroke="#0F271C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                </g>
+                <!-- big acacia -->
+                <g transform="translate(1210 132) scale(1)">
+                    <path d="M0 80C0 50-8 26-18 4H-6C6 26 12 50 12 80Z"/>
+                    <ellipse cx="-6" cy="0" rx="66" ry="13"/>
+                    <ellipse cx="-32" cy="-12" rx="36" ry="10"/>
+                    <ellipse cx="22" cy="-10" rx="30" ry="9"/>
+                </g>
+            </g>
+            <g class="layer layer-4" fill="#0F271C">
+                <!-- elephant -->
+                <g transform="translate(1320 114) scale(.78)">
+                    <path d="M26 56Q26 26 66 26Q108 26 114 54L116 90 104 90 104 116 90 116 90 94 56 94 56 116 42 116 42 90 32 88Q26 80 26 56Z"/>
+                    <circle cx="30" cy="54" r="24"/>
+                    <path d="M12 66Q2 80 6 104Q8 112 14 108Q12 94 20 80Z"/>
+                    <path d="M40 40Q58 44 54 68Q44 74 36 60Z" fill="#1B3F2B"/>
+                    <path d="M18 74Q10 82 12 90" stroke="#F2E6C4" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                    <path d="M114 56Q124 66 120 84" stroke="#0F271C" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+                </g>
+                <path d="M0 202C300 190 600 206 900 198 1150 190 1300 200 1440 194V220H0Z"/>
+            </g>
+        </svg>
+    </header>
+    <div class="zebra" role="presentation"></div>
+
+    <!-- THE PLUG-IN SLOT: each page puts its own content here -->
     <div class="container-fluid px-4 pb-5">
         {% block content %}
-        <!-- Child pages inject their HTML inside here -->
         {% endblock %}
     </div>
+
+    <footer class="site-footer">
+        <div class="container-fluid px-4">
+            Emissions data from the EPA's <a href="https://campd.epa.gov" target="_blank" rel="noopener">Clean Air Markets Program Data</a> (CAMPD).
+        </div>
+    </footer>
 
     <!-- Bootstrap Javascript bundle for dropdown menus and buttons -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Intro.js Script for the tutorial functionality -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/intro.js/7.2.0/intro.js"></script>
 
-    <!-- Custom script to turn on Bootstrap hover tooltips across the entire website -->
+    <!-- Turn on Bootstrap hover tooltips across the whole site -->
     <script>
     document.addEventListener("DOMContentLoaded", function(){
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-            return new bootstrap.Tooltip(tooltipTriggerEl)
-        })
+        tooltipTriggerList.map(function (el) { return new bootstrap.Tooltip(el) })
     });
     </script>
 </body>
