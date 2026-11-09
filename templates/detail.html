@@ -34,6 +34,18 @@
             </div>
         </div>
 
+        <div class="card shadow-sm border mb-4"
+             data-intro="Step 3: TRACI impact. Short tons are converted to kilograms (1 short ton = 907.18474 kg) and multiplied by the TRACI characterization factors. Missing factors show up as warnings, not zeros."
+             data-step="3">
+            <div class="card-header"><h5 class="card-title mb-0">TRACI 2.2 Impact Summary</h5></div>
+            <div class="card-body">
+                <p>Global climate: {{ '%.2f'|format(impact_summary.impacts.global_climate_kg_co2_eq) }} kg CO₂ eq</p>
+                <p>Acidification: {{ '%.2f'|format(impact_summary.impacts.acidification_kg_so2_eq) }} kg SO₂ eq</p>
+                <p class="small text-muted mb-0">Based on {{ impact_summary.record_count }} records; EPA short tons converted to kilograms.</p>
+                {% for warning in impact_summary.warnings %}<p class="text-warning small mb-0">{{ warning }}</p>{% endfor %}
+            </div>
+        </div>
+
         <div class="card shadow-sm border"
              data-bs-toggle="tooltip" title="A breakdown of every individual boiler and smokestack at this plant."
              data-intro="Step 2: Unit Breakdown. This table isolates individual smokestacks, detailing exact fuel types and pollution control devices used on site." data-step="2">

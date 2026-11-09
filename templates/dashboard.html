@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% set active = 'dashboard' %}
+{% set hero_size = 'compact' %}
+{% set hero_title = 'Data Analytics' %}
+{% set hero_sub = 'Descriptive statistics, emissions charts, and CO₂ model results from the EPA records in this database.' %}
+
+{% block title %}Data Analytics | epaData{% endblock %}
+
+{% block content %}
+<style>
+    .kpi-card .kpi-label, .kpi-mini .kpi-label { font-size: .8rem; color: var(--ink-soft); text-transform: none; }
+    .kpi-value { font-family: var(--font-display); font-size: 1.25rem; color: var(--canopy); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kpi-value-sm { font-family: var(--font-display); font-size: 1.2rem; color: var(--canopy); }
+    .kpi-unit { font-size: .75rem; color: var(--ink-soft); }
+    .kpi-mini { border: 1px dashed var(--line); border-radius: var(--leaf-sm); padding: .5rem .75rem; }
+    .chart-box { min-height: 320px; }
+    .empty-state { display: flex; align-items: center; justify-content: center; min-height: 320px;
+                   text-align: center; color: var(--ink-soft); padding: 1rem; }
+</style>
+
+<div class="container-fluid px-0">
+
+    <!-- FILTERS: every chart and number below reads these -->
+    <div class="card mb-4 p-3" data-intro="Filters. Pick a year, state, fuel, dataset, or facility. Every number and chart on this page updates to match." data-step="101">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-1" for="f-year">Reporting year</label>
+                <select id="f-year" class="form-select form-select-sm"><option value="">All years</option></select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-1" for="f-state">State</label>
+                <select id="f-state" class="form-select form-select-sm"><option value="">All states</option></select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-1" for="f-fuel">Primary fuel</label>
+                <select id="f-fuel" class="form-select form-select-sm"><option value="">All fuels</option></select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-1" for="f-dataset">Dataset</label>
+                <select id="f-dataset" class="form-select form-select-sm"><option value="">All datasets</option></select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small mb-1" for="f-facility">Facility</label>
+                <select id="f-facility" class="form-select form-select-sm"><option value="">All facilities</option></select>
+            </div>
+            <div class="col-6 col-md-2 d-flex gap-2">
+                <button id="f-reset" class="btn btn-outline-secondary btn-sm w-100" type="button">Reset filters</button>
+            </div>
+        </div>
+        <div id="filter-status" class="small mt-2 text-secondary" role="status" aria-live="polite"></div>
+    </div>
+
+    <div id="page-alert" class="alert alert-danger d-none" role="alert"></div>
+
+    <!-- SECTION A: DESCRIPTIVE STATISTICS -->
+    <h2 class="h4 mt-2">A. Descriptive statistics</h2>
+    <p class="small text-secondary">Sample variance and standard deviation (n − 1). Values are blank when there are not enough valid numbers.</p>
+
+    <div class="row g-3 mb-3" data-intro="Headline numbers for the filtered records. Variance is in squared short tons, so it looks big." data-step="102">
+        <div class="col-6 col-lg-2"><div class="card kpi-card p-3 h-100"><div class="kpi-label">Records</div><div class="kpi-value" id="kpi-records">–</div><div class="kpi-unit" id="kpi-records-sub">rows with CO₂</div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card p-3 h-100"><div class="kpi-label">Mean CO₂</div><div class="kpi-value" id="kpi-mean">–</div><div class="kpi-unit">short tons</div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card p-3 h-100"><div class="kpi-label">Median CO₂</div><div class="kpi-value" id="kpi-median">–</div><div class="kpi-unit">short tons</div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card p-3 h-100"><div class="kpi-label">Std. deviation</div><div class="kpi-value" id="kpi-std">–</div><div class="kpi-unit">short tons</div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card p-3 h-100"><div class="kpi-label">Variance</div><div class="kpi-value" id="kpi-var">–</div><div class="kpi-unit">short tons²</div></div></div>
+        <div class="col-6 col-lg-2"><div class="card kpi-card p-3 h-100"><div class="kpi-label">Total CO₂</div><div class="kpi-value" id="kpi-total">–</div><div class="kpi-unit">short tons</div></div></div>
+    </div>
+
+    <div class="card p-3 mb-3" data-intro="The full calculation for each measure: counts, middle values, spread, and quartiles. Units are shown in the first column." data-step="103">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="stats-table">
+                <thead>
+                    <tr>
+                        <th>Measure</th><th>Unit</th><th class="text-end">Valid</th><th class="text-end">Missing</th>
+                        <th class="text-end">Mean</th><th class="text-end">Median</th><th class="text-end">Variance</th>
+                        <th class="text-end">Std dev</th><th class="text-end">Min</th><th class="text-end">Q1</th>
+                        <th class="text-end">Q3</th><th class="text-end">Max</th><th class="text-end">IQR</th>
+                    </tr>
+                </thead>
+                <tbody><tr><td colspan="13" class="text-secondary">Loading…</td></tr></tbody>
+            </table>
+        </div>
+        <div id="quality-notes" class="small text-secondary mt-3"></div>
+    </div>
+
+    <!-- SECTION B: CHARTS -->
+    <h2 class="h4 mt-4">B. Emissions charts</h2>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card p-3 h-100" data-intro="Emissions by reporting period. A line only appears when the selection has more than one period." data-step="104">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h3 class="h6 mb-0">Emissions over time</h3>
+                    <div class="d-flex gap-2">
+                        <select id="ts-pollutant" class="form-select form-select-sm" style="width:auto" aria-label="Pollutant">
+                            <option value="co2">CO₂ (short tons)</option>
+                            <option value="so2">SO₂ (short tons)</option>
+                            <option value="nox">NOₓ (short tons)</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-timeseries" data-name="emissions_over_time" type="button">Export PNG</button>
+                    </div>
+                </div>
+                <div id="chart-timeseries" class="chart-box"></div>
+                <div class="chart-message small text-secondary" id="msg-timeseries"></div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card p-3 h-100" data-intro="Top emitters. Switch between CO₂, SO₂, NOₓ, and the TRACI impact categories. TRACI values are impact equivalents, not raw masses." data-step="105">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h3 class="h6 mb-0">Top emitters</h3>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <select id="top-metric" class="form-select form-select-sm" style="width:auto" aria-label="Metric">
+                            <option value="co2_mass">CO₂ (short tons)</option>
+                            <option value="so2_mass">SO₂ (short tons)</option>
+                            <option value="nox_mass">NOₓ (short tons)</option>
+                            <option value="global_climate_kg_co2_eq">TRACI global warming (kg CO₂ eq)</option>
+                            <option value="acidification_kg_so2_eq">TRACI acidification (kg SO₂ eq)</option>
+                        </select>
+                        <select id="top-group" class="form-select form-select-sm" style="width:auto" aria-label="Group by">
+                            <option value="facility">By facility</option>
+                            <option value="state">By state</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-top" data-name="top_emitters" type="button">Export PNG</button>
+                    </div>
+                </div>
+                <div id="chart-top" class="chart-box"></div>
+                <div class="chart-message small text-secondary" id="msg-top"></div>
+                <div class="small text-danger" id="warn-top"></div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card p-3 h-100" data-intro="Heat input against CO₂, with a straight-line fit. Gross load is not in the EPA export we have, so heat input stands in for activity." data-step="106">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="h6 mb-0">Heat input vs. CO₂</h3>
+                    <button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-scatter" data-name="heat_input_vs_co2" type="button">Export PNG</button>
+                </div>
+                <div id="chart-scatter" class="chart-box"></div>
+                <div class="chart-message small text-secondary" id="msg-scatter"></div>
+                <div class="small text-secondary mt-1" id="scatter-fit"></div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card p-3 h-100" data-intro="TRACI environmental impact for the filtered records. Missing factors show as warnings instead of zeros." data-step="107">
+                <h3 class="h6 mb-2">TRACI impact summary</h3>
+                <div class="row g-2 mb-2">
+                    <div class="col-6"><div class="kpi-mini"><div class="kpi-label">Global warming</div><div class="kpi-value-sm" id="traci-gw">–</div><div class="kpi-unit">kg CO₂ eq</div></div></div>
+                    <div class="col-6"><div class="kpi-mini"><div class="kpi-label">Acidification</div><div class="kpi-value-sm" id="traci-acid">–</div><div class="kpi-unit">kg SO₂ eq</div></div></div>
+                </div>
+                <div class="small text-secondary">1 short ton = 907.18474 kg. Impact = mass (kg) × characterization factor, summed over CO₂, SO₂, and NOₓ.</div>
+                <ul class="small text-danger mt-2 mb-0" id="traci-warnings"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION C: MODEL RESULTS -->
+    <h2 class="h4 mt-4">C. CO₂ prediction models</h2>
+    <div class="card p-3 mb-3" id="ml-panel" data-intro="How the models were checked. Facilities are held out entirely, so the test rows are plants the model never saw during training." data-step="108">
+        <div id="ml-status" class="small text-secondary mb-2">Loading model results…</div>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0" id="ml-table">
+                        <thead><tr><th>Model</th><th class="text-end">Test MAE</th><th class="text-end">Test RMSE</th><th class="text-end">Test R²</th><th class="text-end">CV RMSE</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="small mt-2" id="ml-details"></div>
+                <div class="chart-box mt-2" id="chart-ml-compare"></div>
+                <div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-ml-compare" data-name="model_comparison" type="button">Export PNG</button></div>
+            </div>
+            <div class="col-lg-6">
+                <div class="chart-box" id="chart-ml-pred"></div>
+                <div class="chart-message small text-secondary" id="msg-ml-pred"></div>
+                <div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-ml-pred" data-name="actual_vs_predicted" type="button">Export PNG</button></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

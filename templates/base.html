@@ -414,6 +414,11 @@
                         data-intro="Navigation: Click here to upload new CSV/Excel datasets to the SQLite database." data-step="99">
                         <a class="nav-link {{ 'active' if active == 'upload' }}" href="/upload">Add data</a>
                     </li>
+                    <li class="nav-item"
+                        data-bs-toggle="tooltip" title="Statistics, charts, and model results."
+                        data-intro="Navigation: Data Analytics opens the dashboard with summary statistics, emissions charts, TRACI impacts, and the CO₂ model comparison." data-step="100">
+                        <a class="nav-link {{ 'active' if active == 'dashboard' }}" href="/dashboard">Data Analytics</a>
+                    </li>
                 </ul>
 
                 <!-- Tutorial Button: starts the step-by-step walkthrough -->
@@ -421,7 +426,7 @@
                     Start tutorial
                 </button>
 
-                <span class="badge phase-badge">Phase 1: SQLite storage</span>
+                <span class="badge phase-badge">Phase 2: analytics and models</span>
             </div>
         </div>
     </nav>

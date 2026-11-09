@@ -1,28 +1,11 @@
 @echo off
+rem Starts the web app. Run setup.bat first (once).
 cd /d "%~dp0"
-echo ========================================
-echo Starting epaData Explorer...
-echo ========================================
-
-if not exist venv (
-    echo Creating virtual environment...
-    python -m venv venv
+if not exist venv\Scripts\python.exe (
+    echo The virtual environment is missing. Run setup.bat first.
+    pause
+    exit /b 1
 )
-
-echo Activating virtual environment...
-call venv\Scripts\activate
-
-echo Checking and installing dependencies...
-python -m pip install --upgrade pip
-if exist requirements.txt (
-    pip install -r requirements.txt
-) else (
-    echo Warning: requirements.txt not found!
-)
-
-echo Seeding TRACI impact factors into database...
-python importtraci.py
-
-echo Launching Flask Server...
-python app.py
+echo Starting epaData Explorer at http://127.0.0.1:5000
+venv\Scripts\python.exe app.py
 pause
