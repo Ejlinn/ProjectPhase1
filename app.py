@@ -15,29 +15,27 @@ try:
 except ImportError:
     pd = None
 from datetime import datetime
-from flask import Flask, render_template, request, flash, redirect, url_for
+from flask import Flask, render_template, request, flash, redirect, url_for, jsonify
 from models import db, FacilityRecord, UploadedDataset
+from impact import calculate_impacts
 
 app = Flask(__name__)
 app.secret_key = "super_secret_capstone_key"
 
 # SQLite configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///epa_data.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('EPA_DATABASE_URI', 'sqlite:///epa_data.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
-# Automatically create or update the database tables on startup
-from sqlalchemy import inspect, text
+# Create missing tables and add missing columns. Existing rows are never deleted.
+from services.db_migrations import ensure_schema
+from routes.analytics import analytics_bp
+
+app.register_blueprint(analytics_bp)
 
 with app.app_context():
-    db.create_all()
-    inspector = inspect(db.engine)
-    if inspector.has_table("facility_records"):
-        columns = [col["name"] for col in inspector.get_columns("facility_records")]
-        if "dataset_id" not in columns or "record_hour" not in columns:
-            db.drop_all()
-            db.create_all()
+    ensure_schema(db)
 
 
 # Primary model first, then fallbacks if it is overloaded (503) or rate limited (429).
@@ -424,29 +422,52 @@ def upload():
                 records = []
                 for _, row in df.iterrows():
                     # Fallback defaults if columns are missing
-                    fac_id = str(row[col_fac_id]).split('.')[0] if col_fac_id and pd.notna(row[col_fac_id]) else "1353"
+                    # Missing text fields still get a placeholder so rows stay searchable,
+                    # but each placeholder is recorded in data_flags.
+                    flags = []
+                    if col_fac_id and pd.notna(row[col_fac_id]):
+                        fac_id = str(row[col_fac_id]).split('.')[0]
+                    else:
+                        fac_id = "1353"
+                        flags.append("defaulted:facility_id")
                     fac_name = str(row[col_fac_name]) if col_fac_name and pd.notna(row[col_fac_name]) else "Generating Facility"
-                    st = str(row[col_state]) if col_state and pd.notna(row[col_state]) else "KY"
+                    if not (col_fac_name and pd.notna(row[col_fac_name])):
+                        flags.append("defaulted:facility_name")
+                    if col_state and pd.notna(row[col_state]):
+                        st = str(row[col_state])
+                    else:
+                        st = "KY"
+                        flags.append("defaulted:state")
                     unit = str(row[col_unit]) if col_unit and pd.notna(row[col_unit]) else "1"
-                    fuel = str(row[col_fuel]) if col_fuel and pd.notna(row[col_fuel]) else "Coal"
+                    if col_fuel and pd.notna(row[col_fuel]):
+                        fuel = str(row[col_fuel])
+                    else:
+                        fuel = "Coal"
+                        flags.append("defaulted:primary_fuel")
 
-                    def parse_num(val):
+                    def parse_num(val, name):
+                        # Returns None (not 0) when a value is missing or unreadable
                         try:
                             # Remove commas if numbers are formatted as strings like "8,450,120"
                             if isinstance(val, str):
                                 val = val.replace(',', '')
-                            return float(val) if pd is not None and pd.notna(val) else 0.0
+                            if pd is not None and pd.notna(val):
+                                return float(val)
                         except (ValueError, TypeError):
-                            return 0.0
+                            pass
+                        flags.append(f"missing:{name}")
+                        return None
 
-                    co2 = parse_num(row[col_co2]) if col_co2 else 0.0
-                    so2 = parse_num(row[col_so2]) if col_so2 else 0.0
-                    nox = parse_num(row[col_nox]) if col_nox else 0.0
-                    heat = parse_num(row[col_heat]) if col_heat else 0.0
+                    co2 = parse_num(row[col_co2], "co2_mass") if col_co2 else None
+                    so2 = parse_num(row[col_so2], "so2_mass") if col_so2 else None
+                    nox = parse_num(row[col_nox], "nox_mass") if col_nox else None
+                    heat = parse_num(row[col_heat], "heat_input") if col_heat else None
 
                     rec_date = "2024"
                     if col_date and pd.notna(row[col_date]):
                         rec_date = str(row[col_date]).strip()
+                    else:
+                        flags.append("defaulted:record_date")
 
                     rec_hour = None
                     if col_hour and pd.notna(row[col_hour]):
@@ -470,6 +491,7 @@ def upload():
                     record.record_date = rec_date
                     record.record_hour = rec_hour
                     record.dataset_id = new_dataset.id
+                    record.data_flags = ";".join(flags) or None
                     records.append(record)
 
                 if not records:
@@ -512,6 +534,7 @@ def delete_dataset(dataset_id):
 @app.route("/facility/<facility_id>")
 def detail(facility_id):
     records = FacilityRecord.query.filter_by(facility_id=facility_id).all()
+    impact_summary = calculate_impacts(records, db.engine)
     
     mock_units = []
     fac_name = "Facility View"
@@ -529,10 +552,16 @@ def detail(facility_id):
                 "type": "Boiler / Turbine",
                 "fuel": r.primary_fuel or "N/A",
                 "control": "Standard Monitors",
-                "hours": f"{r.co2_mass:,.2f} tons CO₂"
+                "hours": f"{r.co2_mass:,.2f} tons CO₂" if r.co2_mass is not None else "CO₂ not reported"
             })
             
-    return render_template("detail.html", facility_id=facility_id, facility_name=fac_name, state=fac_state, units=mock_units)
+    return render_template("detail.html", facility_id=facility_id, facility_name=fac_name, state=fac_state, units=mock_units, impact_summary=impact_summary)
+
+
+@app.route("/api/facility/<facility_id>/impacts")
+def facility_impacts(facility_id):
+    records = FacilityRecord.query.filter_by(facility_id=facility_id).all()
+    return jsonify({"facility_id": facility_id, **calculate_impacts(records, db.engine)})
 
 import csv
 import io
@@ -614,10 +643,17 @@ def fetch_live_api():
                 record = FacilityRecord()
                 record.facility_name = item.get('facilityName', 'Unknown Facility')
                 record.state = item.get('stateCode', state_code)
-                record.co2_mass = float(item.get('co2Mass', 0.0) or 0.0)
-                record.so2_mass = float(item.get('so2Mass', 0.0) or 0.0)
-                record.nox_mass = float(item.get('noxMass', 0.0) or 0.0)
-                record.heat_input = float(item.get('heatInput', 0.0) or 0.0)
+                # Missing API values stay NULL (not 0) so the analytics do not treat them as measurements
+                flags = []
+                for api_key, field in (('co2Mass', 'co2_mass'), ('so2Mass', 'so2_mass'),
+                                       ('noxMass', 'nox_mass'), ('heatInput', 'heat_input')):
+                    raw_value = item.get(api_key)
+                    if raw_value is None or raw_value == "":
+                        flags.append(f"missing:{field}")
+                        setattr(record, field, None)
+                    else:
+                        setattr(record, field, float(raw_value))
+                record.data_flags = ";".join(flags) or None
                 record.facility_id = str(item.get('facilityId', '1353'))
                 record.unit_id = str(item.get('unitId', '1'))
                 record.primary_fuel = item.get('fuelType', 'Coal')

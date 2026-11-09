@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 
+{% set active = 'home' %}
+{% set hero_size = 'compact' %}
+{% set hero_title = facility_name %}
+{% set hero_sub = 'EPA facility ID ' ~ facility_id %}
+
 {% block title %}Facility Details | epaData{% endblock %}
 
 {% block content %}
@@ -20,22 +25,32 @@
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <h2 class="h3 fw-bold text-dark mb-1">{{ facility_name }}</h2>
-                        <p class="text-muted mb-0">
-                            EPA Facility ID <span class="mono-num fw-bold">{{ facility_id }}</span>
-                            {% if state %}&middot; <span class="badge bg-secondary">{{ state }}</span>{% endif %}
-                            &middot; {{ units|length }} record{{ '' if units|length == 1 else 's' }}
+                        <p class="mb-0">
+                            {% if state %}<span class="badge bg-secondary me-2">{{ state }}</span>{% endif %}
+                            {{ units|length }} record{{ '' if units|length == 1 else 's' }} for this facility
                         </p>
                     </div>
                 </div>
             </div>
         </div>
 
+        <div class="card shadow-sm border mb-4"
+             data-intro="Step 3: TRACI impact. Short tons are converted to kilograms (1 short ton = 907.18474 kg) and multiplied by the TRACI characterization factors. Missing factors show up as warnings, not zeros."
+             data-step="3">
+            <div class="card-header"><h5 class="card-title mb-0">TRACI 2.2 Impact Summary</h5></div>
+            <div class="card-body">
+                <p>Global climate: {{ '%.2f'|format(impact_summary.impacts.global_climate_kg_co2_eq) }} kg CO₂ eq</p>
+                <p>Acidification: {{ '%.2f'|format(impact_summary.impacts.acidification_kg_so2_eq) }} kg SO₂ eq</p>
+                <p class="small text-muted mb-0">Based on {{ impact_summary.record_count }} records; EPA short tons converted to kilograms.</p>
+                {% for warning in impact_summary.warnings %}<p class="text-warning small mb-0">{{ warning }}</p>{% endfor %}
+            </div>
+        </div>
+
         <div class="card shadow-sm border"
              data-bs-toggle="tooltip" title="A breakdown of every individual boiler and smokestack at this plant."
              data-intro="Step 2: Unit Breakdown. This table isolates individual smokestacks, detailing exact fuel types and pollution control devices used on site." data-step="2">
-            <div class="card-header bg-white py-3">
-                <h5 class="card-title h6 mb-0 fw-bold">Monitored Generating Units (Smokestacks)</h5>
+            <div class="card-header">
+                <h5 class="card-title mb-0">Monitored Generating Units (Smokestacks)</h5>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover table-striped mb-0 align-middle">
