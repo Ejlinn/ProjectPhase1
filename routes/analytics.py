@@ -3,7 +3,6 @@
 from flask import Blueprint, jsonify, render_template, request
 
 from services import analytics_service as analytics
-from services import ml_service
 
 analytics_bp = Blueprint("analytics", __name__)
 
@@ -72,6 +71,7 @@ def scatter():
 
 @analytics_bp.route("/api/ml/metrics")
 def ml_metrics():
+    from services import ml_service  # loads scikit-learn, so only when the dashboard asks for it
     run = ml_service.latest_metrics()
     if run is None:
         return jsonify({
@@ -88,6 +88,7 @@ def ml_predict():
     records = payload.get("records")
     if not isinstance(records, list) or not records:
         return _bad_request("Send JSON like {\"records\": [{\"heat_input\": 500, \"primary_fuel\": \"Coal\"}]}")
+    from services import ml_service
     try:
         return jsonify(ml_service.predict(records))
     except FileNotFoundError as exc:

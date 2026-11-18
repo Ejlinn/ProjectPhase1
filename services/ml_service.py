@@ -43,6 +43,7 @@ SPLIT_METHOD = ("GroupShuffleSplit by facility_id (test 25%, seed 42); "
                 "model selection by 5-fold GroupKFold on training rows only. "
                 "Exploratory evaluation, not temporal forecasting.")
 MODEL_NAMES = ["Baseline (mean)", "Ridge Regression", "Random Forest"]
+MAX_PREDICTIONS_SHOWN = 2000
 
 # Features the model can use. gross_load is stored for the CAMPD rows but is not a
 # model feature yet; operating_time is not in any export we have, so it is reported as unavailable.
@@ -291,12 +292,17 @@ def latest_metrics():
     run = ModelRun.query.order_by(ModelRun.id.desc()).first()
     if run is None:
         return None
+    all_predictions = json.loads(run.predictions_json) if run.predictions_json else []
+    # the charts only need a sample; sending every test row made this response about 8 MB
+    step = max(1, len(all_predictions) // MAX_PREDICTIONS_SHOWN)
+    predictions = all_predictions[::step]
     return {
         "run_id": run.id, "trained_at": run.trained_at, "selected_model": run.selected_model,
         "target": run.target, "target_units": run.target_units, "split_method": run.split_method,
         "train_rows": run.train_rows, "test_rows": run.test_rows,
         "features": json.loads(run.feature_names),
         "metrics": json.loads(run.metrics_json),
-        "predictions": json.loads(run.predictions_json) if run.predictions_json else [],
+        "predictions": predictions,
+        "predictions_total": len(all_predictions),
         "notes": run.notes or "", "artifact_path": run.artifact_path,
     }

@@ -82,6 +82,9 @@ def test_schema_check_keeps_existing_rows(app, clean_db):
     with app.app_context():
         before = db.session.query(FacilityRecord).count()
         changes = ensure_schema(db)
+        again = ensure_schema(db)
         after = db.session.query(FacilityRecord).count()
-    assert changes == []  # the test schema already has every column
+    # the test schema already has every column; the first call may only add indexes
+    assert all(change.startswith("added index") for change in changes)
+    assert again == []  # running it twice changes nothing
     assert before == after == 2

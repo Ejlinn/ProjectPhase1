@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 load_dotenv()
 import requests
 import importlib
-from google import genai
-from google.genai import types
 
 try:
     pd = importlib.import_module("pandas")
@@ -100,6 +98,10 @@ def parse_with_gemini(natural_query):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured.")
+
+    # imported here so the app starts without loading the Gemini library (about 2 s)
+    from google import genai
+    from google.genai import types
 
     client = genai.Client(api_key=api_key)
     prompt = f"""

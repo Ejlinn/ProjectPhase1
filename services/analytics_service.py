@@ -12,12 +12,14 @@ Conventions used throughout:
 """
 
 import math
+import threading
+import time
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 
-from impact import SHORT_TON_KG, calculate_impacts
+from impact import SHORT_TON_KG, aggregate_impacts
 from models import FacilityRecord, UploadedDataset, db
 
 # Numeric fields we describe. gross_load is only included when it has real values.
@@ -86,8 +88,39 @@ def _filtered_query(filters):
     return query
 
 
+FRAME_CACHE_SECONDS = 120
+_frame_cache = {"key": None, "frame": None, "loaded_at": 0.0}
+_frame_lock = threading.Lock()
+
+
+def _data_version():
+    """Cheap fingerprint of the records table, so the cache clears after an upload or import."""
+    # count and newest id catch uploads; the sums catch edited or replaced rows (ids can be reused after a delete)
+    count, newest, co2, so2, heat = db.session.query(
+        func.count(FacilityRecord.id), func.max(FacilityRecord.id),
+        func.sum(FacilityRecord.co2_mass), func.sum(FacilityRecord.so2_mass),
+        func.sum(FacilityRecord.heat_input),
+    ).one()
+    return (int(count or 0), int(newest or 0), co2, so2, heat)
+
+
 def load_frame(filters=None):
-    """Load the filtered records as a pandas DataFrame with one row per FacilityRecord."""
+    """Load the filtered records as a DataFrame. The last result is kept, because the
+    dashboard asks for several endpoints with the same filters in a row."""
+    filters = filters or {}
+    key = (tuple(sorted((k, str(v)) for k, v in filters.items())), _data_version())
+    # the dashboard fires several requests at once; the lock makes the others wait for one load
+    with _frame_lock:
+        fresh = time.time() - _frame_cache["loaded_at"] < FRAME_CACHE_SECONDS
+        if fresh and _frame_cache["key"] == key:
+            return _frame_cache["frame"]
+        frame = _read_frame(filters)
+        _frame_cache.update(key=key, frame=frame, loaded_at=time.time())
+        return frame
+
+
+def _read_frame(filters):
+    """Read the filtered records as a pandas DataFrame with one row per FacilityRecord."""
     columns = [
         FacilityRecord.id, FacilityRecord.dataset_id, FacilityRecord.facility_id,
         FacilityRecord.facility_name, FacilityRecord.state, FacilityRecord.unit_id,
@@ -95,8 +128,9 @@ def load_frame(filters=None):
         FacilityRecord.nox_mass, FacilityRecord.heat_input, FacilityRecord.gross_load,
         FacilityRecord.record_date, FacilityRecord.data_flags,
     ]
-    rows = _filtered_query(filters or {}).with_entities(*columns).all()
-    frame = pd.DataFrame(rows, columns=[c.key for c in columns])
+    # read_sql goes straight from SQLite into DataFrame columns; building ORM objects per row was the slow part
+    statement = _filtered_query(filters or {}).with_entities(*columns).statement
+    frame = pd.read_sql(statement, db.engine)
     if frame.empty:
         return frame
     frame["year"] = frame["record_date"].astype(str).str[:4]
@@ -107,7 +141,8 @@ def load_frame(filters=None):
 
 def describe_values(values):
     """Descriptive statistics for one numeric column. Returns a JSON-safe dict."""
-    series = pd.to_numeric(pd.Series(list(values), dtype="object"), errors="coerce")
+    series = values if isinstance(values, pd.Series) else pd.Series(values, dtype="object")
+    series = pd.to_numeric(series, errors="coerce")
     total = int(series.shape[0])
     valid = series.dropna().astype(float)
     n = int(valid.shape[0])
@@ -125,11 +160,11 @@ def describe_values(values):
 
     result["sum"] = _finite(valid.sum())
     result["mean"] = _finite(valid.mean())
-    result["median"] = _finite(valid.median())
     result["min"] = _finite(valid.min())
     result["max"] = _finite(valid.max())
-    q1 = valid.quantile(0.25)
-    q3 = valid.quantile(0.75)
+    # one pass for all three quartiles (linear interpolation, same as pandas' default)
+    q1, median, q3 = np.quantile(valid.to_numpy(), [0.25, 0.5, 0.75])
+    result["median"] = _finite(median)
     result["q1"] = _finite(q1)
     result["q3"] = _finite(q3)
     result["iqr"] = _finite(q3 - q1)
@@ -152,34 +187,79 @@ def descriptive_statistics(frame):
     return stats
 
 
-def grouped_statistics(frame, by, field="co2_mass"):
-    """Per-group count, mean, sum, and sample std dev of one field. `by` is a column name."""
-    if frame.empty:
+_numeric_cache = {"key": None, "frame": None, "loaded_at": 0.0}
+
+
+def _numeric_frame(filters):
+    """Just the five numeric columns, for quartiles and medians. Strings were most of the load
+    time, and everything that groups by text now runs in SQL instead."""
+    filters = filters or {}
+    key = (tuple(sorted((k, str(v)) for k, v in filters.items())), _data_version())
+    with _frame_lock:
+        if time.time() - _numeric_cache["loaded_at"] < FRAME_CACHE_SECONDS and _numeric_cache["key"] == key:
+            return _numeric_cache["frame"]
+        columns = [getattr(FacilityRecord, name) for name in STAT_FIELDS]
+        statement = _filtered_query(filters).with_entities(*columns).statement
+        frame = pd.read_sql(statement, db.engine)
+        for field in STAT_FIELDS:
+            frame[field] = pd.to_numeric(frame[field], errors="coerce")
+        _numeric_cache.update(key=key, frame=frame, loaded_at=time.time())
+        return frame
+
+
+def group_totals(filters, shift=0.0, field="co2_mass"):
+    """One database scan that returns additive totals for every (state, fuel, facility, year).
+
+    Counts and sums can be added together, so each breakdown on the dashboard (by state, by
+    fuel, by year, by facility) is made from this one small table instead of scanning 700k
+    rows four more times. `shift` is subtracted before squaring, which keeps the n - 1
+    standard deviation formula accurate when the values are large."""
+    f = FacilityRecord
+    column = getattr(f, field)
+    shifted = column - shift
+    year = func.substr(f.record_date, 1, 4)
+    rows = (_filtered_query(filters).with_entities(
+                f.state, f.primary_fuel, f.facility_id, year,
+                func.count(), func.count(column), func.sum(column),
+                func.sum(shifted), func.sum(shifted * shifted))
+            .group_by(f.state, f.primary_fuel, f.facility_id, year).all())
+    return pd.DataFrame(rows, columns=["state", "primary_fuel", "facility_id", "year", "n", "v", "s", "s1", "s2"])
+
+
+def grouped_statistics(totals, by):
+    """Per-group count, mean, sum and sample std dev of CO₂, built from group_totals()."""
+    if totals.empty:
         return []
+    parts = totals.groupby(by, dropna=False)[["n", "v", "s", "s1", "s2"]].sum(min_count=1)
     groups = []
-    for key, part in frame.groupby(by, dropna=False):
-        values = part[field].dropna()
-        n = int(values.shape[0])
+    for key, row in parts.iterrows():
+        valid = int(row["v"] or 0)
+        std = None
+        if valid >= 2:
+            variance = (row["s2"] - row["s1"] * row["s1"] / valid) / (valid - 1)
+            std = _finite(math.sqrt(max(variance, 0.0)))
         groups.append({
             "group": "" if pd.isna(key) else str(key),
-            "record_count": int(part.shape[0]),
-            "valid_count": n,
-            "mean": _finite(values.mean()) if n else None,
-            "sum": _finite(values.sum()) if n else None,
-            "std_dev": _finite(values.std(ddof=1)) if n >= 2 else None,
+            "record_count": int(row["n"]),
+            "valid_count": valid,
+            "mean": _finite(row["s"] / valid) if valid else None,
+            "sum": _finite(row["s"]) if valid else None,
+            "std_dev": std,
         })
     groups.sort(key=lambda g: (g["sum"] is None, -(g["sum"] or 0)))
     return groups
 
 
-def data_quality(frame):
+def data_quality(filters):
     """Summarise missing and filled-in values so the dashboard can show caveats."""
-    total = int(frame.shape[0])
+    f = FacilityRecord
+    all_zero_test = case(
+        ((f.co2_mass == 0) & (f.so2_mass == 0) & (f.nox_mass == 0) & (f.heat_input == 0), 1), else_=0)
+    total, flagged, all_zero = _filtered_query(filters).with_entities(
+        func.count(), func.count(f.data_flags), func.sum(all_zero_test)).one()
+    total, flagged, all_zero = int(total or 0), int(flagged or 0), int(all_zero or 0)
     if total == 0:
         return {"total_records": 0, "flagged_records": 0, "legacy_all_zero_records": 0, "notes": []}
-    flagged = int(frame["data_flags"].notna().sum())
-    all_zero = int(((frame["co2_mass"] == 0) & (frame["so2_mass"] == 0)
-                    & (frame["nox_mass"] == 0) & (frame["heat_input"] == 0)).sum())
     notes = []
     if all_zero:
         notes.append(
@@ -208,24 +288,25 @@ def _load_factors():
 def traci_summary(frame, filters=None):
     """Environmental impact totals for the filtered records, using the TRACI factors.
     Uses the same calculation as the facility impact endpoint."""
-    records = _filtered_query(filters or {}).all()
-    result = calculate_impacts(records, db.engine)
+    result = aggregate_impacts(_filtered_query(filters or {}), db.engine)
     result["short_ton_to_kg"] = SHORT_TON_KG
     return result
 
 
 def summary(filters):
-    frame = load_frame(filters)
+    frame = _numeric_frame(filters)
+    co2_mean = frame["co2_mass"].mean() if not frame.empty else 0.0
+    totals = group_totals(filters, shift=0.0 if pd.isna(co2_mean) else float(co2_mean))
     return {
         "filters": filters,
         "statistics": descriptive_statistics(frame),
         "grouped": {
-            "by_state": grouped_statistics(frame, "state"),
-            "by_fuel": grouped_statistics(frame, "primary_fuel"),
-            "by_year": grouped_statistics(frame, "year"),
-            "by_facility": grouped_statistics(frame, "facility_id")[:25],
+            "by_state": grouped_statistics(totals, "state"),
+            "by_fuel": grouped_statistics(totals, "primary_fuel"),
+            "by_year": grouped_statistics(totals, "year"),
+            "by_facility": grouped_statistics(totals, "facility_id")[:25],
         },
-        "data_quality": data_quality(frame),
+        "data_quality": data_quality(filters),
         "traci": traci_summary(frame, filters),
     }
 
@@ -233,18 +314,21 @@ def summary(filters):
 def emissions_over_time(filters):
     """Totals per reporting period (the record_date value). Only shows a trend when
     there is more than one period."""
-    frame = load_frame(filters)
-    if frame.empty:
+    f = FacilityRecord
+    # coalesce keeps the old behaviour: a period with nothing reported sums to 0
+    rows = (_filtered_query(filters).filter(f.record_date.isnot(None))
+            .with_entities(f.record_date, func.coalesce(func.sum(f.co2_mass), 0.0),
+                           func.coalesce(func.sum(f.so2_mass), 0.0),
+                           func.coalesce(func.sum(f.nox_mass), 0.0),
+                           func.count(func.distinct(f.facility_id)), func.count())
+            .group_by(f.record_date).order_by(f.record_date).all())
+    if not rows:
         return {"periods": [], "trend_available": False,
                 "message": "No records match these filters."}
-    grouped = frame.groupby("record_date").agg(
-        co2=("co2_mass", "sum"), so2=("so2_mass", "sum"), nox=("nox_mass", "sum"),
-        facilities=("facility_id", "nunique"), records=("id", "count"),
-    ).reset_index().sort_values("record_date")
     periods = [
-        {"period": row.record_date, "co2": _finite(row.co2), "so2": _finite(row.so2),
-         "nox": _finite(row.nox), "facilities": int(row.facilities), "records": int(row.records)}
-        for row in grouped.itertuples()
+        {"period": day, "co2": _finite(co2), "so2": _finite(so2), "nox": _finite(nox),
+         "facilities": int(facilities), "records": int(records)}
+        for day, co2, so2, nox, facilities, records in rows
     ]
     trend = len(periods) > 1
     message = None if trend else (
@@ -259,14 +343,19 @@ def top_emitters(filters, metric="co2_mass", limit=10, group_by="facility"):
         raise ValueError(f"metric must be one of {', '.join(TOP_METRICS)}")
     if group_by not in ("facility", "state"):
         raise ValueError("group_by must be 'facility' or 'state'")
-    frame = load_frame(filters)
-    if frame.empty:
+    f = FacilityRecord
+    key_column = f.facility_id if group_by == "facility" else f.state
+    rows = (_filtered_query(filters).filter(key_column.isnot(None))
+            .with_entities(key_column, func.sum(f.co2_mass), func.sum(f.so2_mass), func.sum(f.nox_mass))
+            .group_by(key_column).all())
+    if not rows:
         return {"metric": metric, "items": [], "warnings": [], "message": "No records match these filters."}
+    # one total per group; a group with nothing reported stays missing instead of becoming 0
+    per_group = pd.DataFrame(rows, columns=["key", "co2_mass", "so2_mass", "nox_mass"]).set_index("key")
 
-    key = "facility_id" if group_by == "facility" else "state"
     warnings = []
     if metric in ("co2_mass", "so2_mass", "nox_mass"):
-        sums = frame.groupby(key)[metric].sum(min_count=1)
+        sums = per_group[metric]
     else:
         factors, factor_warnings = _load_factors()
         warnings.extend(factor_warnings)
@@ -282,21 +371,25 @@ def top_emitters(filters, metric="co2_mass", limit=10, group_by="facility"):
             if so2_factor is None or nox_factor is None:
                 warnings.append("Missing acidification factor for SO₂ or NOₓ; this ranking is empty.")
                 return {"metric": metric, "items": [], "warnings": warnings, "message": None}
-            so2 = frame.groupby(key)["so2_mass"].sum(min_count=1).fillna(0)
-            nox = frame.groupby(key)["nox_mass"].sum(min_count=1).fillna(0)
+            so2 = per_group["so2_mass"].fillna(0)
+            nox = per_group["nox_mass"].fillna(0)
             sums = (so2 * so2_factor + nox * nox_factor) * SHORT_TON_KG
         else:
             factor = factors.get(substance, {}).get(column)
             if factor is None:
                 warnings.append(f"Missing {column} factor for {substance}; this ranking is empty.")
                 return {"metric": metric, "items": [], "warnings": warnings, "message": None}
-            sums = frame.groupby(key)[mass].sum(min_count=1) * SHORT_TON_KG * factor
-    names = frame.groupby(key)["facility_name"].first() if group_by == "facility" else None
+            sums = per_group[mass] * SHORT_TON_KG * factor
+    top = sums.dropna().sort_values(ascending=False).head(limit)
+    names = {}
+    if group_by == "facility" and len(top):
+        names = dict(db.session.query(f.facility_id, func.max(f.facility_name))
+                     .filter(f.facility_id.in_(list(top.index))).group_by(f.facility_id).all())
     items = []
-    for group_value, total in sums.dropna().sort_values(ascending=False).head(limit).items():
+    for group_value, total in top.items():
         label = str(group_value)
-        if names is not None and group_value in names.index and pd.notna(names.loc[group_value]):
-            label = f"{names.loc[group_value]} ({group_value})"
+        if names.get(group_value):
+            label = f"{names[group_value]} ({group_value})"
         items.append({"label": label, "key": str(group_value), "value": _finite(total)})
     return {"metric": metric, "label": TOP_METRICS[metric]["label"],
             "unit": TOP_METRICS[metric]["unit"], "items": items, "warnings": warnings, "message": None}
@@ -304,35 +397,57 @@ def top_emitters(filters, metric="co2_mass", limit=10, group_by="facility"):
 
 def heat_vs_co2(filters, limit=2000):
     """Heat input against CO₂ for rows where both are real numbers. Gross load is not in the data yet."""
-    frame = load_frame(filters)
-    if frame.empty:
-        return {"x_label": "Heat input (mmBtu)", "points": [], "trendline": None,
-                "message": "No records match these filters."}
-    part = frame.dropna(subset=["heat_input", "co2_mass"])
-    part = part[part["heat_input"] > 0]
-    points = [{"x": _finite(x), "y": _finite(y), "facility": str(f)}
-              for x, y, f in zip(part["heat_input"], part["co2_mass"], part["facility_id"])][:limit]
+    f = FacilityRecord
+    pairs = _filtered_query(filters).filter(f.heat_input.isnot(None), f.co2_mass.isnot(None), f.heat_input > 0)
+    n, mean_x, mean_y, min_x, max_x = pairs.with_entities(
+        func.count(), func.avg(f.heat_input), func.avg(f.co2_mass),
+        func.min(f.heat_input), func.max(f.heat_input)).one()
+    n = int(n or 0)
+    if n == 0:
+        return {"x_label": "Heat input (mmBtu)", "y_label": "CO₂ mass (short tons)", "points": [],
+                "trendline": None, "message": "Not enough heat input and CO₂ pairs for this selection."}
+
+    # an evenly spaced sample of the rows, so the chart is not just the first 2000 records
+    step = max(1, n // limit)
+    sample = (pairs.filter(f.id % step == 0).order_by(f.id).limit(limit)
+              .with_entities(f.heat_input, f.co2_mass, f.facility_id).all())
+    points = [{"x": _finite(x), "y": _finite(y), "facility": str(fid)} for x, y, fid in sample]
+
     trendline = None
-    if len(part) >= 2 and part["heat_input"].nunique() >= 2:
-        slope, intercept = np.polyfit(part["heat_input"].astype(float), part["co2_mass"].astype(float), 1)
-        xs = [float(part["heat_input"].min()), float(part["heat_input"].max())]
+    if n >= 2 and min_x != max_x:
+        # least squares line from sums of deviations, using all pairs (not just the sample)
+        dx, dy = f.heat_input - mean_x, f.co2_mass - mean_y
+        sxy, sxx = pairs.with_entities(func.sum(dx * dy), func.sum(dx * dx)).one()
+        slope = sxy / sxx
+        intercept = mean_y - slope * mean_x
+        xs = [float(min_x), float(max_x)]
         trendline = {"slope": _finite(slope), "intercept": _finite(intercept),
                      "x": xs, "y": [_finite(slope * x + intercept) for x in xs]}
-    message = None if points else "Not enough heat input and CO₂ pairs for this selection."
     return {"x_label": "Heat input (mmBtu)", "y_label": "CO₂ mass (short tons)",
-            "points": points, "trendline": trendline, "message": message,
-            "note": "Gross load is not in the EPA export used here, so heat input is the activity measure."}
+            "points": points, "trendline": trendline, "message": None,
+            "note": "Heat input is the activity measure. The line is fitted on every record; the dots are an evenly spaced sample."}
+
+
+_options_cache = {"key": None, "value": None}
 
 
 def filter_options():
-    """Values for the dashboard dropdowns, taken from what is actually in the database."""
-    years = sorted({y for (y,) in db.session.query(func.substr(FacilityRecord.record_date, 1, 4)).distinct()
-                    if y})
-    states = sorted({s for (s,) in db.session.query(FacilityRecord.state).distinct() if s})
-    fuels = sorted({f for (f,) in db.session.query(FacilityRecord.primary_fuel).distinct() if f})
+    """Values for the dashboard dropdowns, taken from what is actually in the database.
+    Kept until the records or datasets change, since building the list scans every row."""
+    key = (_data_version(), UploadedDataset.query.count())
+    if _options_cache["key"] == key:
+        return _options_cache["value"]
+    f = FacilityRecord
+    year = func.substr(f.record_date, 1, 4)
+    combos = db.session.query(f.state, f.primary_fuel, year).group_by(f.state, f.primary_fuel, year).all()
+    years = sorted({y for _, _, y in combos if y})
+    states = sorted({s for s, _, _ in combos if s})
+    fuels = sorted({fuel for _, fuel, _ in combos if fuel})
     datasets = [{"id": d.id, "label": f"#{d.id} {d.filename}"}
                 for d in UploadedDataset.query.order_by(UploadedDataset.id).all()]
     facilities = [{"id": fid, "name": name or fid} for fid, name in
-                  db.session.query(FacilityRecord.facility_id, func.max(FacilityRecord.facility_name))
-                  .group_by(FacilityRecord.facility_id).order_by(FacilityRecord.facility_id).all()]
-    return {"years": years, "states": states, "fuels": fuels, "datasets": datasets, "facilities": facilities}
+                  db.session.query(f.facility_id, func.max(f.facility_name))
+                  .group_by(f.facility_id).order_by(f.facility_id).all()]
+    value = {"years": years, "states": states, "fuels": fuels, "datasets": datasets, "facilities": facilities}
+    _options_cache.update(key=key, value=value)
+    return value
