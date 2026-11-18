@@ -44,13 +44,13 @@ SPLIT_METHOD = ("GroupShuffleSplit by facility_id (test 25%, seed 42); "
                 "Exploratory evaluation, not temporal forecasting.")
 MODEL_NAMES = ["Baseline (mean)", "Ridge Regression", "Random Forest"]
 
-# Features we would like to use. gross_load and operating_time are not in the
-# current EPA export, so they are reported as unavailable instead of being invented.
+# Features the model can use. gross_load is stored for the CAMPD rows but is not a
+# model feature yet; operating_time is not in any export we have, so it is reported as unavailable.
 NUMERIC_CANDIDATES = ["heat_input"]
 CATEGORICAL_CANDIDATES = ["primary_fuel", "state"]
 UNAVAILABLE_FEATURES = {
-    "gross_load": "Not present in the EPA export used for this project.",
-    "operating_time": "Not present in the EPA export used for this project.",
+    "gross_load": "Stored for CAMPD rows, but not used as a model feature yet.",
+    "operating_time": "Not present in any EPA export used for this project.",
 }
 
 
@@ -113,8 +113,9 @@ def build_models(numeric, categorical):
         ]),
         "Random Forest": Pipeline([
             ("prep", _preprocessor(numeric, categorical, scale=False)),
-            ("model", RandomForestRegressor(n_estimators=200, max_depth=8, min_samples_leaf=3,
-                                            random_state=RANDOM_SEED, n_jobs=1)),
+            # 100 trees, each on a 20% sample: keeps training fast on the full CAMPD set
+            ("model", RandomForestRegressor(n_estimators=100, max_depth=8, min_samples_leaf=3,
+                                            max_samples=0.2, random_state=RANDOM_SEED, n_jobs=-1)),
         ]),
     }
 
