@@ -294,18 +294,48 @@
         showMessage("msg-scatter", data.note || "");
     }
 
-    // ---------- section C ----------
+    // ---------- section C: forecast models ----------
 
-    async function loadMlMetrics() {
+    const REFERENCE_PREFIX = "Ridge + same-day";
+
+    function fillStateSelects(states, current) {
+        ["ml-state", "wi-state"].forEach(function (id) {
+            const select = document.getElementById(id);
+            select.innerHTML = "";
+            if (!states.length) {
+                const option = document.createElement("option");
+                option.value = "";
+                option.textContent = "No models yet";
+                select.appendChild(option);
+                return;
+            }
+            states.forEach(function (state) {
+                const option = document.createElement("option");
+                option.value = state;
+                option.textContent = state;
+                select.appendChild(option);
+            });
+            select.value = current || states[0];
+        });
+    }
+
+    async function loadMlMetrics(stateOverride) {
         const status = document.getElementById("ml-status");
-        const data = await getJSON("/api/ml/metrics");
+        const wanted = stateOverride !== undefined ? stateOverride : document.getElementById("ml-state").value;
+        const data = await getJSON("/api/ml/metrics" + (wanted ? "?state=" + encodeURIComponent(wanted) : ""));
+        fillStateSelects(data.states_trained || [], data.state || wanted);
         if (!data.available) {
             status.textContent = data.reason;
-            plotEmpty("chart-ml-compare", "Model results are not available yet.");
-            plotEmpty("chart-ml-pred", "Model results are not available yet.");
-            return;
+            ["chart-ml-compare", "chart-ml-daily", "chart-ml-pred"].forEach(function (id) {
+                plotEmpty(id, "Model results are not available yet.");
+            });
+            document.querySelector("#ml-table tbody").innerHTML = "";
+            document.getElementById("ml-details").innerHTML = "";
+            return false;
         }
-        status.textContent = "Trained " + data.trained_at + ". Selected model: " + data.selected_model + " (lowest cross-validation RMSE).";
+        status.textContent = data.state + " model, trained " + data.trained_at + ". Best by validation error: " +
+            data.selected_model + ".";
+
         const tbody = document.querySelector("#ml-table tbody");
         tbody.innerHTML = "";
         const names = Object.keys(data.metrics);
@@ -313,8 +343,9 @@
             const m = data.metrics[name];
             const tr = document.createElement("tr");
             if (name === data.selected_model) tr.className = "table-success";
-            const cv = m.validation ? fmt(m.validation.cv_rmse_mean, 2) : "–";
-            [name, fmt(m.test.mae, 2), fmt(m.test.rmse, 2), m.test.r2 === null ? "n/a" : fmt(m.test.r2, 3), cv]
+            if (name.indexOf(REFERENCE_PREFIX) === 0) tr.className = "text-secondary fst-italic";
+            const cv = m.validation ? fmt(m.validation.cv_rmse_mean, 1) : "–";
+            [name, fmt(m.test.mae, 1), fmt(m.test.rmse, 1), m.test.r2 === null ? "n/a" : fmt(m.test.r2, 3), cv]
                 .forEach(function (text, i) {
                     const td = document.createElement("td");
                     td.textContent = text;
@@ -327,9 +358,10 @@
         const details = document.getElementById("ml-details");
         details.innerHTML = "";
         [
-            "Target: CO₂ mass (" + data.target_units + ")",
-            "Features: " + data.features.join(", "),
-            "Rows: " + data.train_rows + " training / " + data.test_rows + " testing",
+            "Target: CO₂ per unit per day (" + data.target_units + ")",
+            "Inputs: " + data.features.join(", ") + ". State is not an input.",
+            "Training: " + fmt(data.train_rows, 0) + " unit-days, " + (data.train_dates || []).join(" to "),
+            "Testing: " + fmt(data.test_rows, 0) + " unit-days, " + (data.test_dates || []).join(" to ") + " (the latest days)",
             "Split: " + data.split_method
         ].forEach(function (line) {
             const p = document.createElement("div");
@@ -338,46 +370,206 @@
         });
         if (data.notes) {
             const p = document.createElement("div");
-            p.className = "text-secondary";
+            p.className = "text-secondary mt-1";
             p.textContent = data.notes;
             details.appendChild(p);
         }
 
+        const labelNames = names.map(function (n) { return n.length > 24 ? n.slice(0, 22) + "…" : n; });
         Plotly.react("chart-ml-compare", [
-            { type: "bar", name: "MAE", x: names, y: names.map(function (n) { return data.metrics[n].test.mae; }), marker: { color: COLORS.mango } },
-            { type: "bar", name: "RMSE", x: names, y: names.map(function (n) { return data.metrics[n].test.rmse; }), marker: { color: COLORS.fern } }
+            { type: "bar", name: "MAE", x: labelNames, y: names.map(function (n) { return data.metrics[n].test.mae; }), marker: { color: COLORS.mango },
+              customdata: names, hovertemplate: "%{customdata}<br>MAE %{y:,.1f}<extra></extra>" },
+            { type: "bar", name: "RMSE", x: labelNames, y: names.map(function (n) { return data.metrics[n].test.rmse; }), marker: { color: COLORS.fern },
+              customdata: names, hovertemplate: "%{customdata}<br>RMSE %{y:,.1f}<extra></extra>" }
         ], Object.assign({}, CHART_LAYOUT, {
-            height: 280, barmode: "group",
-            yaxis: { title: "Error (short tons), lower is better" },
-            legend: { orientation: "h", y: -0.25 }
+            height: 300, barmode: "group", margin: { l: 60, r: 20, t: 20, b: 90 },
+            yaxis: { title: "Error on test days (short tons), lower is better" },
+            legend: { orientation: "h", y: -0.4 }
         }), PLOT_CONFIG);
+
+        const daily = data.daily || [];
+        if (!daily.length) {
+            plotEmpty("chart-ml-daily", "No daily test results were saved.");
+        } else {
+            Plotly.react("chart-ml-daily", [
+                { type: "scatter", mode: "lines", name: "Actual", x: daily.map(function (d) { return d.date; }),
+                  y: daily.map(function (d) { return d.actual; }), line: { color: COLORS.canopy, width: 2 } },
+                { type: "scatter", mode: "lines", name: "Forecast (" + data.selected_model + ")", x: daily.map(function (d) { return d.date; }),
+                  y: daily.map(function (d) { return d.predicted; }), line: { color: COLORS.mango, width: 2, dash: "dot" } }
+            ], Object.assign({}, CHART_LAYOUT, {
+                height: 280, xaxis: { title: "Test day" }, yaxis: { title: "All units in " + data.state + " (short tons CO₂)" },
+                legend: { orientation: "h", y: -0.3 }
+            }), PLOT_CONFIG);
+        }
+        showMessage("msg-ml-daily", "Each day adds up every unit that had a usable forecast. These are the latest days, which were not used to train.");
 
         const preds = data.predictions || [];
         if (!preds.length) {
             plotEmpty("chart-ml-pred", "No test predictions were saved.");
-            return;
+            return true;
         }
         const lo = Math.min.apply(null, preds.map(function (p) { return Math.min(p.actual, p.predicted); }));
         const hi = Math.max.apply(null, preds.map(function (p) { return Math.max(p.actual, p.predicted); }));
         Plotly.react("chart-ml-pred", [
             {
-                type: "scatter", mode: "markers", name: "Test rows",
+                type: "scattergl", mode: "markers", name: "Unit-days",
                 x: preds.map(function (p) { return p.actual; }),
                 y: preds.map(function (p) { return p.predicted; }),
-                text: preds.map(function (p) { return "Facility " + p.facility_id; }),
-                marker: { color: COLORS.canopy, size: 8, opacity: 0.7 },
-                hovertemplate: "%{text}<br>Actual %{x:,.2f}<br>Predicted %{y:,.2f}<extra></extra>"
+                text: preds.map(function (p) { return "Facility " + p.facility_id + ", unit " + p.unit_id + ", " + p.date; }),
+                marker: { color: COLORS.canopy, size: 5, opacity: 0.5 },
+                hovertemplate: "%{text}<br>Actual %{x:,.0f}<br>Forecast %{y:,.0f}<extra></extra>"
             },
             {
-                type: "scatter", mode: "lines", name: "Perfect prediction",
+                type: "scatter", mode: "lines", name: "Perfect forecast",
                 x: [lo, hi], y: [lo, hi], line: { color: COLORS.clay, dash: "dash" }, hoverinfo: "skip"
             }
         ], Object.assign({}, CHART_LAYOUT, {
             height: 280,
-            xaxis: { title: "Actual CO₂ (short tons)" }, yaxis: { title: "Predicted CO₂ (short tons)" },
-            legend: { orientation: "h", y: -0.25 }
+            xaxis: { title: "Actual CO₂ (short tons)" }, yaxis: { title: "Forecast CO₂ (short tons)" },
+            legend: { orientation: "h", y: -0.3 }
         }), PLOT_CONFIG);
-        showMessage("msg-ml-pred", "Held-out facilities only. Points on the dashed line would be perfect predictions.");
+        showMessage("msg-ml-pred", "A sample of " + fmt(preds.length, 0) + " of " + fmt(data.predictions_total, 0) +
+            " test unit-days. Points on the dashed line would be perfect forecasts.");
+        return true;
+    }
+
+    // ---------- section D: what-if sensitivity ----------
+
+    let whatIfTicket = 0;
+    let whatIfTimer = null;
+
+    function fillPlainSelect(id, items, valueOf, labelOf, keep) {
+        const select = document.getElementById(id);
+        const previous = keep ? select.value : "";
+        const first = id === "wi-facility" ? select.options[0] : null;
+        select.innerHTML = "";
+        if (first) select.appendChild(first);
+        items.forEach(function (item) {
+            const option = document.createElement("option");
+            option.value = valueOf(item);
+            option.textContent = labelOf(item);
+            select.appendChild(option);
+        });
+        if (previous && Array.prototype.some.call(select.options, function (o) { return o.value === previous; })) {
+            select.value = previous;
+        }
+    }
+
+    async function loadWhatIfOptions() {
+        const state = document.getElementById("wi-state").value;
+        if (!state) return false;
+        const data = await getJSON("/api/sensitivity/options?state=" + encodeURIComponent(state));
+        fillPlainSelect("wi-facility", data.facilities || [],
+            function (f) { return f.id; }, function (f) { return f.name + " (" + f.id + ")"; }, false);
+        fillPlainSelect("wi-input", data.inputs || [],
+            function (i) { return i.key; }, function (i) { return i.label; }, true);
+        fillPlainSelect("wi-model", (data.models || []).map(function (m) { return { name: m }; }),
+            function (m) { return m.name; }, function (m) { return m.name + (m.name === data.default_model ? " (best)" : ""); }, false);
+        if (data.default_model) document.getElementById("wi-model").value = data.default_model;
+        return true;
+    }
+
+    function signed(value, digits) {
+        if (value === null || value === undefined) return "–";
+        return (value > 0 ? "+" : "") + fmt(value, digits);
+    }
+
+    function updateSliderLabel() {
+        const v = Number(document.getElementById("wi-slider").value);
+        setText("wi-slider-label", (v > 0 ? "+" : "") + v + "%");
+    }
+
+    async function loadWhatIf() {
+        const ticket = ++whatIfTicket;
+        const state = document.getElementById("wi-state").value;
+        const warnings = document.getElementById("wi-warnings");
+        if (!state) {
+            plotEmpty("chart-wi-curve", "Train a model first (python train_model.py).");
+            plotEmpty("chart-wi-tornado", "Train a model first (python train_model.py).");
+            return;
+        }
+        const params = new URLSearchParams({
+            state: state,
+            input: document.getElementById("wi-input").value || "level",
+            change_pct: document.getElementById("wi-slider").value
+        });
+        const facility = document.getElementById("wi-facility").value;
+        const model = document.getElementById("wi-model").value;
+        if (facility) params.set("facility_id", facility);
+        if (model) params.set("model", model);
+
+        let d;
+        try {
+            d = await getJSON("/api/sensitivity?" + params.toString());
+        } catch (err) {
+            if (ticket !== whatIfTicket) return;
+            warnings.innerHTML = "";
+            const li = document.createElement("li");
+            li.textContent = err.message;
+            warnings.appendChild(li);
+            plotEmpty("chart-wi-curve", "No what-if result for this selection.");
+            plotEmpty("chart-wi-tornado", "No what-if result for this selection.");
+            return;
+        }
+        if (ticket !== whatIfTicket) return; // the slider moved again; ignore this answer
+
+        setText("wi-base", fmt(d.baseline.prediction, 0) + " t");
+        setText("wi-scenario", fmt(d.scenario.prediction, 0) + " t");
+        setText("wi-change", signed(d.scenario.change, 0) + " t" +
+            (d.scenario.change_pct === null ? "" : " (" + signed(d.scenario.change_pct, 1) + "%)"));
+        setText("wi-sens", d.sensitivity.per_one_percent === null ? "–" : fmt(d.sensitivity.per_one_percent, 2) + "% per 1%");
+        const inputs = d.baseline.inputs;
+        setText("wi-basis", "Forecast for " + d.baseline.forecast_for + ". Typical values: " + d.baseline.based_on +
+            ". Yesterday's CO₂ " + fmt(inputs.co2_lag1, 0) + " t, yesterday's heat input " + fmt(inputs.heat_lag1, 0) +
+            " mmBtu, fuel " + (inputs.primary_fuel || "unknown") + ". Model: " + d.model + ".");
+        warnings.innerHTML = "";
+        d.warnings.forEach(function (w) {
+            const li = document.createElement("li");
+            li.textContent = w;
+            warnings.appendChild(li);
+        });
+
+        const curve = d.curve;
+        Plotly.react("chart-wi-curve", [
+            { type: "scatter", mode: "lines+markers", name: "Forecast CO₂", x: curve.change_pct, y: curve.prediction,
+              line: { color: COLORS.fern, width: 2 }, marker: { size: 5 },
+              hovertemplate: "Input %{x:+}%<br>Forecast %{y:,.0f} t<extra></extra>" },
+            { type: "scatter", mode: "markers", name: "Your setting", x: [d.change_pct], y: [d.scenario.prediction],
+              marker: { color: COLORS.clay, size: 12, symbol: "diamond" },
+              hovertemplate: "Input %{x:+}%<br>Forecast %{y:,.0f} t<extra></extra>" }
+        ], Object.assign({}, CHART_LAYOUT, {
+            height: 300, xaxis: { title: d.input.label + " (% change)", zeroline: true },
+            yaxis: { title: "Forecast CO₂ (short tons)" }, legend: { orientation: "h", y: -0.3 }
+        }), PLOT_CONFIG);
+
+        const rows = d.tornado.rows.slice().reverse();
+        Plotly.react("chart-wi-tornado", [
+            { type: "bar", orientation: "h", name: "Input −" + d.tornado.step_pct + "%",
+              y: rows.map(function (r) { return r.label; }), x: rows.map(function (r) { return r.down_pct; }),
+              marker: { color: COLORS.mango }, hovertemplate: "%{y}<br>%{x:+.1f}% forecast<extra></extra>" },
+            { type: "bar", orientation: "h", name: "Input +" + d.tornado.step_pct + "%",
+              y: rows.map(function (r) { return r.label; }), x: rows.map(function (r) { return r.up_pct; }),
+              marker: { color: COLORS.canopy }, hovertemplate: "%{y}<br>%{x:+.1f}% forecast<extra></extra>" }
+        ], Object.assign({}, CHART_LAYOUT, {
+            height: 300, barmode: "group", margin: { l: 150, r: 20, t: 20, b: 60 },
+            xaxis: { title: "Change in forecast CO₂ (%)", zeroline: true }, legend: { orientation: "h", y: -0.3 }
+        }), PLOT_CONFIG);
+        showMessage("msg-wi-tornado", "Each input is moved by ±" + d.tornado.step_pct +
+            "% on its own. The longer the bar, the more the forecast depends on that input.");
+    }
+
+    function scheduleWhatIf() {
+        updateSliderLabel();
+        clearTimeout(whatIfTimer);
+        whatIfTimer = setTimeout(loadWhatIf, 180);
+    }
+
+    async function changeModelState(state) {
+        fillStateSelects(
+            Array.prototype.map.call(document.getElementById("ml-state").options, function (o) { return o.value; }).filter(Boolean),
+            state);
+        await loadMlMetrics(state);
+        if (await loadWhatIfOptions()) await loadWhatIf();
     }
 
     // ---------- orchestration ----------
@@ -425,7 +617,16 @@
             refreshAll();
         });
         loadFilterOptions().then(refreshAll);
-        loadMlMetrics().catch(function (err) {
+        document.getElementById("ml-state").addEventListener("change", function (e) { changeModelState(e.target.value); });
+        document.getElementById("wi-state").addEventListener("change", function (e) { changeModelState(e.target.value); });
+        ["wi-facility", "wi-input", "wi-model"].forEach(function (id) {
+            document.getElementById(id).addEventListener("change", loadWhatIf);
+        });
+        document.getElementById("wi-slider").addEventListener("input", scheduleWhatIf);
+        updateSliderLabel();
+        loadMlMetrics().then(function (found) {
+            return found ? loadWhatIfOptions().then(function (ok) { return ok ? loadWhatIf() : null; }) : null;
+        }).catch(function (err) {
             document.getElementById("ml-status").textContent = "Model results could not be loaded: " + err.message;
         });
     }

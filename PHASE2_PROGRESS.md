@@ -1,5 +1,7 @@
 # Phase 2 progress
 
+> **Newer notes are in `CHANGES.md`.** The CO₂ prediction section below describes the first version (split by facility, state as an input). It has since been replaced by per-state autoregressive models split by date, plus a what-if sensitivity tool. See `CHANGES.md` for the current design and results.
+
 ## What we built
 
 **Descriptive statistics** (`services/analytics_service.py`)

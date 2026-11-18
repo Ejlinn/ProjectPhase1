@@ -72,12 +72,14 @@ def scatter():
 @analytics_bp.route("/api/ml/metrics")
 def ml_metrics():
     from services import ml_service  # loads scikit-learn, so only when the dashboard asks for it
-    run = ml_service.latest_metrics()
+    state = (request.args.get("state") or "").strip().upper() or None
+    run = ml_service.latest_metrics(state)
     if run is None:
-        return jsonify({
-            "available": False,
-            "reason": "No model has been trained yet. Run `python train_model.py` to create one.",
-        })
+        trained = ml_service.trained_states()
+        reason = (f"No model has been trained for {state} yet. Run `python train_model.py --state {state}`."
+                  if state and trained else
+                  "No model has been trained yet. Run `python train_model.py` to create one per state.")
+        return jsonify({"available": False, "reason": reason, "states_trained": trained})
     run["available"] = True
     return jsonify(run)
 
@@ -86,10 +88,44 @@ def ml_metrics():
 def ml_predict():
     payload = request.get_json(silent=True) or {}
     records = payload.get("records")
-    if not isinstance(records, list) or not records:
-        return _bad_request("Send JSON like {\"records\": [{\"heat_input\": 500, \"primary_fuel\": \"Coal\"}]}")
+    state = str(payload.get("state") or "").strip().upper()
+    if not isinstance(records, list) or not records or not state:
+        return _bad_request(
+            "Send JSON like {\"state\": \"KY\", \"records\": [{\"co2_lag1\": 3000, \"heat_lag1\": 30000, "
+            "\"co2_lag7\": 2900, \"co2_roll7\": 3100, \"heat_roll7\": 31000, \"primary_fuel\": \"Coal\", "
+            "\"date\": \"2025-06-01\"}]}")
     from services import ml_service
     try:
-        return jsonify(ml_service.predict(records))
+        return jsonify(ml_service.predict(records, state=state))
     except FileNotFoundError as exc:
         return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        return _bad_request(str(exc))
+
+
+@analytics_bp.route("/api/sensitivity/options")
+def sensitivity_options():
+    from services import sensitivity_service
+    state = (request.args.get("state") or "").strip().upper() or None
+    return jsonify(sensitivity_service.options(state))
+
+
+@analytics_bp.route("/api/sensitivity")
+def sensitivity():
+    """What-if: scale one input of the forecast and see how the forecast CO₂ moves."""
+    from services import sensitivity_service
+    state = (request.args.get("state") or "").strip().upper()
+    if not state:
+        return _bad_request("state is required, for example ?state=KY&change_pct=20")
+    try:
+        return jsonify(sensitivity_service.sensitivity(
+            state,
+            facility_id=(request.args.get("facility_id") or "").strip() or None,
+            input_key=request.args.get("input", sensitivity_service.DEFAULT_INPUT),
+            change_pct=request.args.get("change_pct", 0),
+            model_name=(request.args.get("model") or "").strip() or None,
+        ))
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 409
+    except ValueError as exc:
+        return _bad_request(str(exc))

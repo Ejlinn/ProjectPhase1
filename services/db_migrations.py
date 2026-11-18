@@ -16,6 +16,10 @@ ADDED_COLUMNS = {
         "gross_load": "FLOAT",
         "data_flags": "VARCHAR(255)",
     },
+    "model_runs": {
+        "state": "VARCHAR(10)",
+        "extra_json": "TEXT",
+    },
 }
 
 

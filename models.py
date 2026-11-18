@@ -56,3 +56,5 @@ class ModelRun(db.Model):
     predictions_json = db.Column(db.Text, nullable=True)  # JSON: actual vs predicted on test rows
     notes = db.Column(db.Text, nullable=True)
     artifact_path = db.Column(db.String(255), nullable=True)
+    state = db.Column(db.String(10), nullable=True)       # one model is trained per state
+    extra_json = db.Column(db.Text, nullable=True)       # JSON: daily actual-vs-predicted series, split dates, selection details

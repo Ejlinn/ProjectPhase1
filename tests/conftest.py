@@ -17,7 +17,7 @@ os.environ["EPA_DATABASE_URI"] = f"sqlite:///{TEST_DB.as_posix()}"
 os.environ["EPA_MODEL_PATH"] = str(TEST_DIR / "models" / "co2_predictor.joblib")
 
 from app import app as flask_app  # noqa: E402  (must come after the env vars)
-from models import FacilityRecord, UploadedDataset, db  # noqa: E402
+from models import FacilityRecord, ModelRun, UploadedDataset, db  # noqa: E402
 import importtraci  # noqa: E402
 
 
@@ -42,6 +42,7 @@ def clean_db(app):
     with app.app_context():
         db.session.query(FacilityRecord).delete()
         db.session.query(UploadedDataset).delete()
+        db.session.query(ModelRun).delete()
         db.session.commit()
     yield
 
