@@ -130,7 +130,7 @@ def prepare_rows(raw):
                   .mean().rename(name).reset_index())
         df = df.merge(rolled, on=["unit_key", "date"], how="left")
 
-    df["day_of_week"] = df["date"].dt.dayofweek
+    df["day_of_week"] = df["date"].dt.day_of_week
     df["month"] = df["date"].dt.month
     return _missing_as_nan(df)
 
@@ -405,7 +405,7 @@ def _features_from_record(record):
     if when and (_is_missing(row["day_of_week"]) or _is_missing(row["month"])):
         stamp = pd.to_datetime(when, errors="coerce")
         if pd.notna(stamp):
-            row["day_of_week"] = row["day_of_week"] if not _is_missing(row["day_of_week"]) else int(stamp.dayofweek)
+            row["day_of_week"] = row["day_of_week"] if not _is_missing(row["day_of_week"]) else int(stamp.day_of_week)
             row["month"] = row["month"] if not _is_missing(row["month"]) else int(stamp.month)
     return row
 

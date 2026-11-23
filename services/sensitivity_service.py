@@ -97,7 +97,7 @@ def baseline_scenario(state, facility_id=None):
     inputs = {name: float(recent[name].median()) for name in ml_service.HISTORY_FEATURES}
     fuels = recent["primary_fuel"].dropna()
     inputs["primary_fuel"] = fuels.mode().iloc[0] if not fuels.empty else None
-    inputs["day_of_week"] = int(forecast_day.dayofweek)
+    inputs["day_of_week"] = int(forecast_day.day_of_week)
     inputs["month"] = int(forecast_day.month)
     value = {"inputs": inputs, "forecast_for": str(forecast_day.date()), "unit_days": int(len(recent)),
              "from": str(recent["date"].min().date()), "to": str(last_day.date())}
