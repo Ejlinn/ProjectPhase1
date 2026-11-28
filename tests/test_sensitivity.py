@@ -92,3 +92,15 @@ def test_options_endpoint_lists_inputs_facilities_and_models(client, ready):
     assert [f["id"] for f in body["facilities"]] == ["0", "1", "2", "3"]
     assert set(body["models"]) == set(ml_service.LEARNED_MODELS)
     assert body["default_model"] in ml_service.LEARNED_MODELS
+
+
+def test_named_scenarios_compare_with_the_baseline(app, ready):
+    result = run(app, model_name=ml_service.RIDGE)
+    scenarios = {s["key"]: s for s in result["scenarios"]}
+    assert scenarios["baseline"]["change"] == 0.0
+    assert {"load_up_10", "heat_down_5", "busy_week", "high_efficiency", "fuel_switch"} <= set(scenarios)
+    base = result["baseline"]["prediction"]
+    up = scenarios["load_up_10"]
+    assert up["prediction"] > base
+    assert up["change_pct"] == pytest.approx((up["prediction"] - base) / base * 100)
+    assert len(result["curve"]["outside_range"]) == len(result["curve"]["change_pct"])

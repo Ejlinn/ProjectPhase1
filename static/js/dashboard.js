@@ -19,6 +19,9 @@
     const PLOT_CONFIG = { responsive: true, displaylogo: false };
 
     let requestCounter = 0;
+    // the last response behind each "Download data" button, so the export matches what is on screen
+    const lastData = {};
+    let lastDistribution = null;
 
     // ---------- small helpers ----------
 
@@ -195,6 +198,7 @@
 
     async function loadSummary() {
         const data = await getJSON(withFilters("/api/analytics/summary"));
+        lastData.summary = data;
         renderStatistics(data.statistics);
         renderQuality(data.data_quality);
         renderTraci(data.traci);
@@ -294,6 +298,102 @@
         showMessage("msg-scatter", data.note || "");
     }
 
+    // ---------- section B2: derived indicators, distribution, correlation ----------
+
+    function pctText(value) {
+        return value === null || value === undefined ? "" : " (" + signed(value, 1) + "%)";
+    }
+
+    async function loadIndicators() {
+        const data = await getJSON(withFilters("/api/analytics/indicators"));
+        lastData.indicators = data;
+        const tbody = document.querySelector("#ind-table tbody");
+        tbody.innerHTML = "";
+        (data.by_year || []).forEach(function (r) {
+            const tr = document.createElement("tr");
+            [r.group, fmtBig(r.co2_total),
+             r.co2_total_change === undefined ? "–" : signed(r.co2_total_change, 0) + pctText(r.co2_total_change_pct),
+             fmt(r.co2_intensity, 3), fmt(r.so2_intensity, 3), fmt(r.nox_intensity, 3), fmt(r.heat_rate, 2),
+             r.heat_rate_change === undefined ? "–" : signed(r.heat_rate_change, 2) + pctText(r.heat_rate_change_pct)
+            ].forEach(function (text, i) {
+                const td = document.createElement("td");
+                td.textContent = text;
+                if (i > 0) td.className = "text-end";
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        if (!tbody.children.length) tbody.innerHTML = '<tr><td colspan="8" class="text-secondary">No records match these filters.</td></tr>';
+        setText("ind-note", data.note || "");
+        renderIndicatorChart();
+    }
+
+    function renderIndicatorChart() {
+        const data = lastData.indicators;
+        if (!data) return;
+        const metric = document.getElementById("ind-metric").value;
+        const meta = data.indicators[metric];
+        const rows = (data.by_state || []).filter(function (r) { return r[metric] !== null; });
+        if (!rows.length) {
+            plotEmpty("chart-ind-state", "No records with gross load for this selection, so the ratio is undefined.");
+            return;
+        }
+        Plotly.react("chart-ind-state", [{
+            type: "bar", x: rows.map(function (r) { return r.group; }), y: rows.map(function (r) { return r[metric]; }),
+            marker: { color: COLORS.fern },
+            customdata: rows.map(function (r) { return r.records; }),
+            hovertemplate: "%{x}<br>%{y:,.3f} " + meta.unit + "<br>%{customdata:,} records<extra></extra>"
+        }], Object.assign({}, CHART_LAYOUT, { xaxis: { title: "State" }, yaxis: { title: meta.label + " (" + meta.unit + ")" } }), PLOT_CONFIG);
+    }
+
+    async function loadDistribution() {
+        lastDistribution = await getJSON(withFilters("/api/analytics/distribution"));
+        lastData.distribution = lastDistribution;
+        renderDistribution();
+        const corr = lastDistribution.correlation;
+        if (!corr) {
+            plotEmpty("chart-corr", "Not enough records to compute correlations.");
+            showMessage("msg-corr", "");
+            return;
+        }
+        Plotly.react("chart-corr", [{
+            type: "heatmap", z: corr.matrix, x: corr.labels, y: corr.labels, zmin: -1, zmax: 1,
+            colorscale: [[0, COLORS.clay], [0.5, "#F4F1E4"], [1, COLORS.canopy]],
+            text: corr.matrix.map(function (row) { return row.map(function (v) { return v === null ? "–" : v.toFixed(2); }); }),
+            texttemplate: "%{text}", hovertemplate: "%{y} vs %{x}<br>r = %{z:.3f}<extra></extra>"
+        }], Object.assign({}, CHART_LAYOUT, { margin: { l: 100, r: 20, t: 20, b: 80 } }), PLOT_CONFIG);
+        showMessage("msg-corr", "Pearson correlation (r) between each pair of measures, using records that have both values. 1 means they rise together.");
+    }
+
+    function renderDistribution() {
+        const d = lastDistribution;
+        if (!d) return;
+        const view = document.getElementById("dist-view").value;
+        if (view === "hist") {
+            const h = d.histogram;
+            if (!h) { plotEmpty("chart-dist", "Not enough CO₂ values for a histogram."); showMessage("msg-dist", ""); return; }
+            const mids = h.counts.map(function (_, i) { return Math.sqrt(h.edges[i] * h.edges[i + 1]); });
+            const widths = h.counts.map(function (_, i) { return h.edges[i + 1] - h.edges[i]; });
+            Plotly.react("chart-dist", [{
+                type: "bar", x: mids, y: h.counts, width: widths, marker: { color: COLORS.fern, line: { color: COLORS.paper, width: 1 } },
+                customdata: h.counts.map(function (_, i) { return [h.edges[i], h.edges[i + 1]]; }),
+                hovertemplate: "%{customdata[0]:,.1f} to %{customdata[1]:,.1f} t<br>%{y:,} records<extra></extra>"
+            }], Object.assign({}, CHART_LAYOUT, { bargap: 0, xaxis: { title: "CO₂ per record (short tons, log scale)", type: "log" }, yaxis: { title: "Records" } }), PLOT_CONFIG);
+            showMessage("msg-dist", h.zero_count ? fmt(h.zero_count, 0) + " records with exactly 0 t are not shown on the log scale." : "");
+        } else {
+            if (!d.boxes.length) { plotEmpty("chart-dist", "Not enough CO₂ values for a box plot."); showMessage("msg-dist", ""); return; }
+            Plotly.react("chart-dist", [{
+                type: "box", name: "CO₂", x: d.boxes.map(function (b) { return b.group; }),
+                q1: d.boxes.map(function (b) { return b.q1; }), median: d.boxes.map(function (b) { return b.median; }),
+                q3: d.boxes.map(function (b) { return b.q3; }), lowerfence: d.boxes.map(function (b) { return b.low; }),
+                upperfence: d.boxes.map(function (b) { return b.high; }), mean: d.boxes.map(function (b) { return b.mean; }), boxmean: true,
+                marker: { color: COLORS.fern }, line: { color: COLORS.canopy }
+            }], Object.assign({}, CHART_LAYOUT, { xaxis: { title: "State" }, yaxis: { title: "CO₂ per record (short tons)" }, showlegend: false }), PLOT_CONFIG);
+            showMessage("msg-dist", "Box = middle half of the records (Q1 to Q3), line = median, dashed = mean. Whiskers reach the furthest value within 1.5 × IQR; " +
+                fmt(d.boxes.reduce(function (s, b) { return s + b.outliers; }, 0), 0) + " records beyond them are outliers and not drawn.");
+        }
+    }
+
     // ---------- section C: forecast models ----------
 
     const REFERENCE_PREFIX = "Ridge + same-day";
@@ -324,6 +424,7 @@
         const wanted = stateOverride !== undefined ? stateOverride : document.getElementById("ml-state").value;
         const data = await getJSON("/api/ml/metrics" + (wanted ? "?state=" + encodeURIComponent(wanted) : ""));
         fillStateSelects(data.states_trained || [], data.state || wanted);
+        lastData.model = data;
         if (!data.available) {
             status.textContent = data.reason;
             ["chart-ml-compare", "chart-ml-daily", "chart-ml-pred"].forEach(function (id) {
@@ -512,6 +613,7 @@
             return;
         }
         if (ticket !== whatIfTicket) return; // the slider moved again; ignore this answer
+        lastData.whatif = d;
 
         setText("wi-base", fmt(d.baseline.prediction, 0) + " t");
         setText("wi-scenario", fmt(d.scenario.prediction, 0) + " t");
@@ -530,17 +632,44 @@
         });
 
         const curve = d.curve;
+        const firstColumn = d.input.columns[0];
+        const inputValues = (curve.input_values || {})[firstColumn] || [];
+        const outside = curve.outside_range || [];
+        const base = d.baseline.prediction;
+        // shade the parts of the slider range that go outside what the model trained on
+        const shapes = [];
+        curve.change_pct.forEach(function (step, i) {
+            if (outside[i]) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: step - 2.5, x1: step + 2.5, y0: 0, y1: 1,
+                                          fillcolor: COLORS.clay, opacity: 0.12, line: { width: 0 } });
+        });
+        shapes.push({ type: "line", xref: "x", yref: "paper", x0: 0, x1: 0, y0: 0, y1: 1, line: { color: COLORS.ink, dash: "dot", width: 1 } });
+        if (base !== null) shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: base, y1: base, line: { color: COLORS.ink, dash: "dot", width: 1 } });
+        const hover = "Input %{x:+}% (%{customdata[0]:,.0f})<br>Forecast %{y:,.0f} t<br>Change %{customdata[1]:+,.0f} t (%{customdata[2]:+.1f}%)<extra></extra>";
+        function custom(step, value, i) {
+            return [inputValues[i], value === null || base === null ? 0 : value - base, value === null || !base ? 0 : (value - base) / base * 100];
+        }
         Plotly.react("chart-wi-curve", [
             { type: "scatter", mode: "lines+markers", name: "Forecast CO₂", x: curve.change_pct, y: curve.prediction,
-              line: { color: COLORS.fern, width: 2 }, marker: { size: 5 },
-              hovertemplate: "Input %{x:+}%<br>Forecast %{y:,.0f} t<extra></extra>" },
+              line: { color: COLORS.fern, width: 2 },
+              marker: { size: 6, color: outside.map(function (o) { return o ? COLORS.clay : COLORS.fern; }) },
+              customdata: curve.change_pct.map(function (s, i) { return custom(s, curve.prediction[i], i); }),
+              hovertemplate: hover },
+            { type: "scatter", mode: "markers", name: "Baseline", x: [0], y: [base],
+              marker: { color: COLORS.ink, size: 11, symbol: "circle-open", line: { width: 2 } },
+              hovertemplate: "Baseline<br>Forecast %{y:,.0f} t<extra></extra>" },
             { type: "scatter", mode: "markers", name: "Your setting", x: [d.change_pct], y: [d.scenario.prediction],
-              marker: { color: COLORS.clay, size: 12, symbol: "diamond" },
+              marker: { color: COLORS.mango, size: 12, symbol: "diamond" },
               hovertemplate: "Input %{x:+}%<br>Forecast %{y:,.0f} t<extra></extra>" }
         ], Object.assign({}, CHART_LAYOUT, {
-            height: 300, xaxis: { title: d.input.label + " (% change)", zeroline: true },
+            height: 300, shapes: shapes, xaxis: { title: d.input.label + " (% change)", zeroline: false },
             yaxis: { title: "Forecast CO₂ (short tons)" }, legend: { orientation: "h", y: -0.3 }
         }), PLOT_CONFIG);
+        if (outside.some(Boolean)) {
+            const li = document.createElement("li");
+            li.textContent = "Shaded red parts of the curve use input values outside the range the model trained on.";
+            warnings.appendChild(li);
+        }
+        renderScenarios(d);
 
         const rows = d.tornado.rows.slice().reverse();
         Plotly.react("chart-wi-tornado", [
@@ -556,6 +685,40 @@
         }), PLOT_CONFIG);
         showMessage("msg-wi-tornado", "Each input is moved by ±" + d.tornado.step_pct +
             "% on its own. The longer the bar, the more the forecast depends on that input.");
+    }
+
+    function renderScenarios(d) {
+        const rows = d.scenarios || [];
+        if (!rows.length) { plotEmpty("chart-wi-scenarios", "No scenarios."); return; }
+        Plotly.react("chart-wi-scenarios", [{
+            type: "bar", x: rows.map(function (s) { return s.label; }), y: rows.map(function (s) { return s.prediction; }),
+            marker: { color: rows.map(function (s) { return s.key === "baseline" ? COLORS.ink : (s.outside_range.length ? COLORS.clay : COLORS.fern); }) },
+            customdata: rows.map(function (s) { return [s.description, s.change || 0, s.change_pct || 0]; }),
+            hovertemplate: "<b>%{x}</b><br>%{customdata[0]}<br>Forecast %{y:,.0f} t<br>Change %{customdata[1]:+,.0f} t (%{customdata[2]:+.1f}%)<extra></extra>"
+        }], Object.assign({}, CHART_LAYOUT, {
+            height: 300, margin: { l: 60, r: 20, t: 20, b: 90 },
+            shapes: d.baseline.prediction === null ? [] : [{ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1,
+                y0: d.baseline.prediction, y1: d.baseline.prediction, line: { color: COLORS.ink, dash: "dot", width: 1 } }],
+            yaxis: { title: "Forecast CO₂ (short tons)" }
+        }), PLOT_CONFIG);
+        const tbody = document.querySelector("#wi-scen-table tbody");
+        tbody.innerHTML = "";
+        rows.forEach(function (s) {
+            const tr = document.createElement("tr");
+            if (s.outside_range.length) tr.className = "text-danger";
+            const name = document.createElement("td");
+            name.textContent = s.label + (s.outside_range.length ? " (outside training range)" : "");
+            name.title = s.description;
+            tr.appendChild(name);
+            [fmt(s.prediction, 0), s.key === "baseline" ? "–" : signed(s.change, 0), s.key === "baseline" ? "–" : signed(s.change_pct, 1) + "%"]
+                .forEach(function (text) {
+                    const td = document.createElement("td");
+                    td.className = "text-end";
+                    td.textContent = text;
+                    tr.appendChild(td);
+                });
+            tbody.appendChild(tr);
+        });
     }
 
     function scheduleWhatIf() {
@@ -578,7 +741,10 @@
         const ticket = ++requestCounter;
         setText("filter-status", "Updating…");
         hideAlert();
-        const jobs = [loadSummary(), loadTimeseries(), loadTopEmitters(), loadScatter()];
+        // keep the filters in the address bar so a view can be bookmarked or shared and reopens the same way
+        const query = filterQuery();
+        history.replaceState(null, "", location.pathname + (query ? "?" + query : ""));
+        const jobs = [loadSummary(), loadTimeseries(), loadTopEmitters(), loadScatter(), loadIndicators(), loadDistribution()];
         const results = await Promise.allSettled(jobs);
         if (ticket !== requestCounter) return; // a newer request has started; ignore this one
         const failures = results.filter(function (r) { return r.status === "rejected"; });
@@ -599,6 +765,56 @@
                 Plotly.downloadImage(node, { format: "png", width: 1200, height: 600, filename: button.dataset.name });
             });
         });
+        document.querySelectorAll(".data-btn").forEach(function (button) {
+            button.addEventListener("click", function () {
+                const data = lastData[button.dataset.key];
+                if (!data) {
+                    showAlert("Nothing to download yet for this section.");
+                    return;
+                }
+                const filters = {};
+                new URLSearchParams(filterQuery()).forEach(function (v, k) { filters[k] = v; });
+                // metadata so the file can be understood and reproduced later
+                const metadata = {
+                    exported_at: new Date().toISOString(),
+                    application: "epaData Phase 2 dashboard",
+                    source_endpoint_section: button.dataset.key,
+                    page_url: location.href,
+                    dashboard_filters: filters,
+                    units: "Masses in short tons unless a field says otherwise; heat input in mmBtu; gross load in MWh.",
+                    indicator_definitions: {
+                        co2_intensity: "CO₂ mass / gross load (short tons per MWh)",
+                        so2_intensity: "SO₂ mass × 2000 / gross load (lb per MWh)",
+                        nox_intensity: "NOₓ mass × 2000 / gross load (lb per MWh)",
+                        heat_rate: "heat input / gross load (mmBtu per MWh)"
+                    }
+                };
+                if (button.dataset.key === "model" || button.dataset.key === "whatif") {
+                    const m = lastData.model || {};
+                    metadata.model = { state: m.state, selected_model: m.selected_model, features: m.features,
+                                       train_dates: m.train_dates, test_dates: m.test_dates, split_method: m.split_method,
+                                       trained_at: m.trained_at };
+                }
+                const blob = new Blob([JSON.stringify({ metadata: metadata, data: data }, null, 2)], { type: "application/json" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = button.dataset.name + ".json";
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+            });
+        });
+    }
+
+    function applyUrlFilters() {
+        const params = new URLSearchParams(location.search);
+        const map = { year: "f-year", state: "f-state", fuel: "f-fuel", dataset_id: "f-dataset", facility_id: "f-facility" };
+        Object.keys(map).forEach(function (key) {
+            const value = params.get(key);
+            const select = document.getElementById(map[key]);
+            if (value && Array.prototype.some.call(select.options, function (o) { return o.value === value; })) select.value = value;
+        });
     }
 
     function init() {
@@ -616,7 +832,9 @@
             });
             refreshAll();
         });
-        loadFilterOptions().then(refreshAll);
+        document.getElementById("ind-metric").addEventListener("change", renderIndicatorChart);
+        document.getElementById("dist-view").addEventListener("change", renderDistribution);
+        loadFilterOptions().then(function () { applyUrlFilters(); return refreshAll(); });
         document.getElementById("ml-state").addEventListener("change", function (e) { changeModelState(e.target.value); });
         document.getElementById("wi-state").addEventListener("change", function (e) { changeModelState(e.target.value); });
         ["wi-facility", "wi-input", "wi-model"].forEach(function (id) {

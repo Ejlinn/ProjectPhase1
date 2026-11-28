@@ -46,6 +46,25 @@ BASELINE_CACHE_SECONDS = 300
 
 _baseline_cache = {}
 
+# Named scenarios, each compared with the baseline. "changes" maps a model input to a percent change.
+SCENARIOS = [
+    {"key": "load_up_10", "label": "Operating level +10%",
+     "description": "Yesterday's heat input and CO₂ both 10% higher.",
+     "changes": {"co2_lag1": 10, "heat_lag1": 10}},
+    {"key": "heat_down_5", "label": "Heat input −5%",
+     "description": "Yesterday's heat input and the 7-day average heat input 5% lower.",
+     "changes": {"heat_lag1": -5, "heat_roll7": -5}},
+    {"key": "busy_week", "label": "Busy week +20%",
+     "description": "The whole past week ran 20% higher: yesterday, last week, and both 7-day averages.",
+     "changes": {"co2_lag1": 20, "heat_lag1": 20, "co2_lag7": 20, "co2_roll7": 20, "heat_roll7": 20}},
+    {"key": "high_efficiency", "label": "High efficiency (combined)",
+     "description": "Same output with 5% less fuel: heat input −5% and CO₂ −5% for yesterday and the 7-day averages.",
+     "changes": {"heat_lag1": -5, "heat_roll7": -5, "co2_lag1": -5, "co2_roll7": -5}},
+    {"key": "fuel_switch", "label": "Fuel switched",
+     "description": "Same history, but the unit is labelled with a different primary fuel (natural gas, or coal if it already burns gas).",
+     "changes": {}, "fuel": True},
+]
+
 
 def facilities_for_state(state):
     """Facilities that have daily records in this state, for the dropdown."""
@@ -139,6 +158,16 @@ def sensitivity(state, facility_id=None, input_key=DEFAULT_INPUT, change_pct=0.0
     for key, item in INPUTS.items():
         for sign in (-1, 1):
             records.append(_scaled(inputs, item["columns"], sign * TORNADO_STEP)); tags.append(("tornado", key, sign))
+    scenario_records = {}
+    for scenario in SCENARIOS:
+        record = dict(inputs)
+        for column, pct in scenario["changes"].items():
+            record[column] = inputs[column] * (1 + pct / 100.0)
+        if scenario.get("fuel"):
+            gas = "Natural Gas" in str(inputs.get("primary_fuel") or "")
+            record["primary_fuel"] = "Coal" if gas else "Pipeline Natural Gas"
+        scenario_records[scenario["key"]] = record
+        records.append(record); tags.append(("named", scenario["key"]))
 
     result = ml_service.predict(records, artifact=artifact, model_name=model)
     values = dict(zip([t for t in tags], result["predictions"]))
@@ -177,6 +206,33 @@ def sensitivity(state, facility_id=None, input_key=DEFAULT_INPUT, change_pct=0.0
                         "size": max(abs(down or 0), abs(up or 0))})
     tornado.sort(key=lambda row: -row["size"])
 
+    def outside_range(record):
+        """Names of inputs in this record that fall outside what the model trained on."""
+        names = []
+        for column in ml_service.HISTORY_FEATURES:
+            low, high = ranges.get(column, [None, None])
+            if low is not None and record.get(column) is not None and not (low <= record[column] <= high):
+                names.append(column)
+        return names
+
+    scenarios = [{"key": "baseline", "label": "Baseline", "description": "Typical recent unit-day, nothing changed.",
+                  "prediction": baseline_pred, "change": 0.0 if baseline_pred is not None else None,
+                  "change_pct": 0.0 if baseline_pred else None, "outside_range": [], "changes": {}}]
+    for scenario in SCENARIOS:
+        value = values[("named", scenario["key"])]
+        record = scenario_records[scenario["key"]]
+        changes = dict(scenario["changes"])
+        if scenario.get("fuel"):
+            changes["primary_fuel"] = f"{inputs.get('primary_fuel')} → {record['primary_fuel']}"
+        scenarios.append({
+            "key": scenario["key"], "label": scenario["label"], "description": scenario["description"],
+            "prediction": value,
+            "change": None if value is None or baseline_pred is None else value - baseline_pred,
+            "change_pct": pct_of_baseline(value), "outside_range": outside_range(record), "changes": changes,
+        })
+
+    curve_outside = [bool(outside_range(_scaled(inputs, columns, step))) for step in CURVE_STEPS]
+
     return {
         "state": state, "facility_id": facility_id, "model": model, "units": ml_service.TARGET_UNITS,
         "input": {"key": input_key, "label": INPUTS[input_key]["label"], "columns": columns},
@@ -193,7 +249,10 @@ def sensitivity(state, facility_id=None, input_key=DEFAULT_INPUT, change_pct=0.0
             "per_one_percent": elasticity,
             "meaning": "Percent change in forecast CO₂ for a 1% change in this input, with every other input held fixed.",
         },
-        "curve": {"change_pct": CURVE_STEPS, "prediction": [values[("curve", s)] for s in CURVE_STEPS]},
+        "curve": {"change_pct": CURVE_STEPS, "prediction": [values[("curve", s)] for s in CURVE_STEPS],
+                  "outside_range": curve_outside,
+                  "input_values": {c: [inputs[c] * (1 + s / 100.0) for s in CURVE_STEPS] for c in columns}},
         "tornado": {"step_pct": TORNADO_STEP, "rows": tornado},
+        "scenarios": scenarios,
         "warnings": warnings,
     }

@@ -69,6 +69,22 @@ def scatter():
         return _bad_request(str(exc))
 
 
+@analytics_bp.route("/api/analytics/indicators")
+def indicators():
+    try:
+        return jsonify(analytics.derived_indicators(_filters()))
+    except ValueError as exc:
+        return _bad_request(str(exc))
+
+
+@analytics_bp.route("/api/analytics/distribution")
+def distribution():
+    try:
+        return jsonify(analytics.distribution(_filters()))
+    except ValueError as exc:
+        return _bad_request(str(exc))
+
+
 @analytics_bp.route("/api/ml/metrics")
 def ml_metrics():
     from services import ml_service  # loads scikit-learn, so only when the dashboard asks for it

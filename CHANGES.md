@@ -45,6 +45,15 @@ PHASE2_PROGRESS.md has the longer write-up from the first Phase 2 pass.
 
 *Tests:* 54 pass, including checks on the lag features, the date split, that state is not a feature, that the history models beat copying yesterday on a controlled series, and the what-if behavior.
 
+**Third update (rubric gaps)**
+- **Derived indicators (dashboard section B2):** CO₂ intensity (short tons/MWh), SO₂ and NOₓ intensity (lb/MWh), and heat rate (mmBtu/MWh) by year and by state, plus year-over-year change in total CO₂ and heat rate. A ratio only uses records with a positive gross load and a value for the numerator. Zero or missing load gives a missing ratio, never zero. Endpoint: `GET /api/analytics/indicators`.
+- **Distributions and relationships:** CO₂ histogram (log-spaced bins), box plot by state (Tukey whiskers, outlier count), and a Pearson correlation heat map of CO₂, SO₂, NOₓ, heat input, and gross load. Endpoint: `GET /api/analytics/distribution`.
+- **Scenario analysis:** five named scenarios next to the baseline (operating level +10%, heat input −5%, busy week +20%, combined high efficiency, fuel switched), shown as a bar chart and table with change in tons and percent. Bars and rows turn red when a scenario uses an input outside the training range.
+- **Sensitivity curve:** the baseline point and baseline reference lines are marked, hover shows the input value and absolute and percent change, and the parts of the range outside the training data are shaded red.
+- **Exports with metadata:** "Download data (JSON)" buttons for the statistics and TRACI summary, the derived indicators, the distribution and correlation, the model results, and the sensitivity and scenario results. Each file includes the export time, filters, units, indicator definitions, and (for model files) the model, features, and training and test dates.
+- **Reproducible filters:** dashboard filters are written to the URL, so a bookmarked or shared link reopens the same view.
+- **`.env.example`:** template for the API keys. Copy it to `.env`.
+
 ## Model results (test = latest 20% of days, 2025-08-08 to 2025-12-31)
 
 | State | Yesterday baseline RMSE | Ridge (linear) | Random Forest | Gradient Boosting | Best test R² | Same-day-heat reference R² |
@@ -115,4 +124,7 @@ Versions are the ones pinned in `requirements.txt`. Licenses are from the projec
 - The what-if tool changes one input at a time and holds the others fixed. In real operation yesterday's heat input and CO₂ move together, which is why the first option changes both.
 - Tree models respond in steps and cannot extrapolate beyond what they saw, so their what-if curve is uneven. The Ridge option shows a straight line.
 - The saved model files (`models_saved/`, about 4 MB per state) are not in git. Run `python train_model.py` on each machine.
-- `operating_time` is not in any export we use, and `gross_load` is stored but not used as an input.
+- `operating_time` is not in any export we use, and `gross_load` is used for the intensity indicators but not as a model input.
+- Year-over-year totals in KY include dataset #2 (annual totals for 2025), so the 2024 to 2025 change in KY total CO₂ is inflated. Filter to dataset #3 for a like-for-like comparison. The intensity ratios are not affected, because those annual rows have no gross load.
+- Unit type, control technology, and operating time are not in the data we store, so the dashboard cannot filter or compare by them.
+- The fuel-switch scenario only changes the fuel label. The unit's history stays the same, and tree models may barely react, so read it as a model check, not a real fuel switch.

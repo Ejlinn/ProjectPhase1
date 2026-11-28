@@ -28,6 +28,18 @@ A Flask and SQLite web application for ingesting, querying, inspecting, and expo
 - **Interactive Guided Tutorial & Tooltips**  
   Use the **Start Tutorial** option in the navigation bar to walk through application controls, supported by contextual Bootstrap tooltips.
 
+### Phase 2: Data Analytics (`/dashboard`)
+
+- **Descriptive statistics:** count, missing, mean, median, sample variance and standard deviation, min/max, quartiles, IQR, grouped by state, fuel, year, and facility.
+- **Derived indicators:** CO₂/SO₂/NOₓ intensity per MWh, heat rate, and year-over-year change. Undefined ratios stay missing, never zero.
+- **Charts (Plotly):** emissions over time, top emitters, heat input vs. CO₂ with a fit line, intensity by state, CO₂ histogram and box plot, correlation heat map. Every chart exports to PNG.
+- **TRACI 2.2 impacts:** global warming (kg CO₂ eq) and acidification (kg SO₂ eq) from CAMPD masses (1 short ton = 907.18474 kg).
+- **CO₂ forecast models:** one model per state; yesterday's-value baseline vs. Ridge, Random Forest, and Gradient Boosting, using each unit's own history; chronological train/test split.
+- **What-if sensitivity and scenarios:** move one input with a slider, see the sensitivity curve, an input comparison, and named scenarios against the baseline, with warnings outside the training range.
+- **Exports:** JSON downloads of every result with metadata (filters, units, definitions, model and training dates). Filters are kept in the URL.
+
+See `CHANGES.md` for methods, results by state, data sources, library licenses, and limitations.
+
 ## Tech Stack
 
 - **Backend:** Python 3.11, Flask
@@ -95,17 +107,22 @@ Open a terminal in the project root directory:
 cd "CS396 EPA Project"
 ```
 
-### 2. Quickstart
+### 2. Quickstart (Windows)
 
-The project includes scripts that create the virtual environment, install dependencies, and launch the application.
+1. Copy `.env.example` to `.env` and add your EPA API key (free from https://api.data.gov/signup/). The Gemini key is optional.
+2. Run `setup.bat` once. It creates `venv`, installs packages, loads the TRACI factors, and trains the models if data is present.
+3. Load the multi-state daily data (about 2 hours, needs the API key), then train the models:
 
-#### Windows
+   ```bat
+   venv\Scripts\python.exe scripts\fetch_campd_hourly.py
+   venv\Scripts\python.exe train_model.py
+   ```
 
-Double-click `run_app.bat` or run:
+4. Start the app with `run_app.bat` and open http://127.0.0.1:5000/dashboard.
 
-```bat
-run_app.bat
-```
+Run the tests with `venv\Scripts\python.exe -m pytest -q`. Tests use a temporary database, never `instance/epa_data.db`.
+
+The database (`instance/`) and trained models (`models_saved/`) are not in git; each machine builds its own.
 
 #### macOS / Linux
 

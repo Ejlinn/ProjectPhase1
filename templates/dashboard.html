@@ -150,13 +150,84 @@
                 </div>
                 <div class="small text-secondary">1 short ton = 907.18474 kg. Impact = mass (kg) × characterization factor, summed over CO₂, SO₂, and NOₓ.</div>
                 <ul class="small text-danger mt-2 mb-0" id="traci-warnings"></ul>
+                <div class="d-flex justify-content-end mt-2"><button class="btn btn-outline-secondary btn-sm data-btn" data-key="summary" data-name="summary_statistics_and_traci" type="button">Download data (JSON)</button></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION B2: DERIVED INDICATORS, DISTRIBUTIONS, CORRELATION -->
+    <h2 class="h4 mt-4">B2. Derived indicators and distributions</h2>
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="card p-3" data-intro="Normalized indicators: emissions per MWh of gross load, heat rate, and the change from the previous year. Records without gross load are left out of the ratios instead of counted as zero." data-step="108">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h3 class="h6 mb-0">Intensity and heat rate by year</h3>
+                    <button class="btn btn-outline-secondary btn-sm data-btn" data-key="indicators" data-name="derived_indicators" type="button">Download data (JSON)</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0" id="ind-table">
+                        <thead><tr>
+                            <th>Year</th><th class="text-end">Total CO₂ (t)</th><th class="text-end">Change vs. prior year</th>
+                            <th class="text-end">CO₂ intensity (t/MWh)</th><th class="text-end">SO₂ (lb/MWh)</th>
+                            <th class="text-end">NOₓ (lb/MWh)</th><th class="text-end">Heat rate (mmBtu/MWh)</th><th class="text-end">Heat rate change</th>
+                        </tr></thead>
+                        <tbody><tr><td colspan="8" class="text-secondary">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="small text-secondary mt-2" id="ind-note"></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card p-3 h-100">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h3 class="h6 mb-0">Intensity by state</h3>
+                    <div class="d-flex gap-2">
+                        <select id="ind-metric" class="form-select form-select-sm" style="width:auto" aria-label="Indicator">
+                            <option value="co2_intensity">CO₂ intensity (t/MWh)</option>
+                            <option value="so2_intensity">SO₂ intensity (lb/MWh)</option>
+                            <option value="nox_intensity">NOₓ intensity (lb/MWh)</option>
+                            <option value="heat_rate">Heat rate (mmBtu/MWh)</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-ind-state" data-name="intensity_by_state" type="button">Export PNG</button>
+                    </div>
+                </div>
+                <div id="chart-ind-state" class="chart-box"></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card p-3 h-100" data-intro="How CO₂ per record is spread out. The histogram uses log-spaced bins because a few large units dwarf the rest. The box plot compares states." data-step="109">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h3 class="h6 mb-0">CO₂ distribution</h3>
+                    <div class="d-flex gap-2">
+                        <select id="dist-view" class="form-select form-select-sm" style="width:auto" aria-label="Distribution view">
+                            <option value="hist">Histogram</option>
+                            <option value="box">Box plot by state</option>
+                        </select>
+                        <button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-dist" data-name="co2_distribution" type="button">Export PNG</button>
+                    </div>
+                </div>
+                <div id="chart-dist" class="chart-box"></div>
+                <div class="chart-message small text-secondary" id="msg-dist"></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card p-3 h-100">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                    <h3 class="h6 mb-0">Correlation between measures</h3>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm data-btn" data-key="distribution" data-name="distribution_and_correlation" type="button">Download data (JSON)</button>
+                        <button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-corr" data-name="correlation_heatmap" type="button">Export PNG</button>
+                    </div>
+                </div>
+                <div id="chart-corr" class="chart-box"></div>
+                <div class="chart-message small text-secondary" id="msg-corr"></div>
             </div>
         </div>
     </div>
 
     <!-- SECTION C: MODEL RESULTS -->
     <h2 class="h4 mt-4">C. CO₂ forecast models</h2>
-    <div class="card p-3 mb-3" id="ml-panel" data-intro="Forecast models. Each state gets its own model, and state is not an input. The models use each unit's CO₂ and heat input from yesterday, last week, and the last 7 days to forecast today. The test days are the latest ones, which the models never saw." data-step="108">
+    <div class="card p-3 mb-3" id="ml-panel" data-intro="Forecast models. Each state gets its own model, and state is not an input. The models use each unit's CO₂ and heat input from yesterday, last week, and the last 7 days to forecast today. The test days are the latest ones, which the models never saw." data-step="110">
         <div class="row g-2 align-items-end mb-2">
             <div class="col-auto">
                 <label for="ml-state" class="form-label small mb-0">State model</label>
@@ -174,7 +245,7 @@
                 </div>
                 <div class="small mt-2" id="ml-details"></div>
                 <div class="chart-box mt-2" id="chart-ml-compare"></div>
-                <div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-ml-compare" data-name="model_comparison" type="button">Export PNG</button></div>
+                <div class="d-flex justify-content-end gap-2 mt-1"><button class="btn btn-outline-secondary btn-sm data-btn" data-key="model" data-name="model_results" type="button">Download results (JSON)</button><button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-ml-compare" data-name="model_comparison" type="button">Export PNG</button></div>
             </div>
             <div class="col-lg-6">
                 <div class="chart-box" id="chart-ml-daily"></div>
@@ -189,7 +260,7 @@
 
     <!-- SECTION D: WHAT-IF SENSITIVITY -->
     <h2 class="h4 mt-4">D. What-if sensitivity</h2>
-    <div class="card p-3 mb-3" id="whatif-panel" data-intro="What-if sensitivity. Pick a state and an input, then move the bar. The input changes by that percent, the forecast CO₂ is recalculated, and the page shows how much the forecast moved. Everything else stays at a typical recent value." data-step="109">
+    <div class="card p-3 mb-3" id="whatif-panel" data-intro="What-if sensitivity. Pick a state and an input, then move the bar. The input changes by that percent, the forecast CO₂ is recalculated, and the page shows how much the forecast moved. Everything else stays at a typical recent value." data-step="111">
         <p class="small text-secondary mb-2">Start from a typical recent unit-day. Move one input up or down and see how the forecast CO₂ responds. Sensitivity is the percent change in the forecast for a 1% change in the input.</p>
         <div class="row g-2 mb-3">
             <div class="col-6 col-lg-2">
@@ -231,6 +302,22 @@
                 <div class="chart-box" id="chart-wi-tornado"></div>
                 <div class="chart-message small text-secondary" id="msg-wi-tornado"></div>
                 <div class="d-flex justify-content-end mt-1"><button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-wi-tornado" data-name="what_if_input_comparison" type="button">Export PNG</button></div>
+            </div>
+        </div>
+        <h3 class="h6 mt-4" data-intro="Named scenarios, each compared with the baseline forecast. Red bars use an input outside the range the model trained on." data-step="112">Scenario comparison</h3>
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="chart-box" id="chart-wi-scenarios"></div>
+                <div class="d-flex justify-content-end gap-2 mt-1"><button class="btn btn-outline-secondary btn-sm data-btn" data-key="whatif" data-name="sensitivity_and_scenarios" type="button">Download results (JSON)</button><button class="btn btn-outline-secondary btn-sm export-btn" data-target="chart-wi-scenarios" data-name="scenario_comparison" type="button">Export PNG</button></div>
+            </div>
+            <div class="col-lg-6">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0" id="wi-scen-table">
+                        <thead><tr><th>Scenario</th><th class="text-end">Forecast (t)</th><th class="text-end">Change (t)</th><th class="text-end">Change (%)</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <p class="small text-secondary mt-2 mb-0">These show how the model responds to changed inputs. They are not proof that the change would cause that result at a real plant.</p>
             </div>
         </div>
     </div>

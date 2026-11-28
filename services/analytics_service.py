@@ -428,6 +428,120 @@ def heat_vs_co2(filters, limit=2000):
             "note": "Heat input is the activity measure. The line is fitted on every record; the dots are an evenly spaced sample."}
 
 
+INDICATORS = {
+    "co2_intensity": {"label": "CO₂ intensity", "unit": "short tons CO₂ / MWh"},
+    "so2_intensity": {"label": "SO₂ intensity", "unit": "lb SO₂ / MWh"},
+    "nox_intensity": {"label": "NOₓ intensity", "unit": "lb NOₓ / MWh"},
+    "heat_rate": {"label": "Heat rate", "unit": "mmBtu / MWh"},
+}
+
+
+def _ratio(numerator, denominator, scale=1.0):
+    """numerator / denominator, or None when either is missing or the denominator is not positive."""
+    if numerator is None or denominator is None or not denominator or denominator <= 0:
+        return None
+    return _finite(numerator / denominator * scale)
+
+
+def derived_indicators(filters):
+    """Intensities and heat rate per year and per state, plus year-over-year change.
+
+    Each ratio only uses records that have a positive gross load AND a value for the numerator,
+    so a missing emission or a zero load never becomes a zero intensity. Undefined ratios are null."""
+    f = FacilityRecord
+    has_load = f.gross_load > 0
+
+    def masked(column):
+        return func.sum(case((has_load & column.isnot(None), column), else_=None))
+
+    def load_for(column):
+        return func.sum(case((has_load & column.isnot(None), f.gross_load), else_=None))
+
+    def rows(group_column):
+        return (_filtered_query(filters).with_entities(
+                    group_column, func.sum(f.co2_mass), func.sum(f.gross_load),
+                    masked(f.co2_mass), load_for(f.co2_mass),
+                    masked(f.so2_mass), load_for(f.so2_mass),
+                    masked(f.nox_mass), load_for(f.nox_mass),
+                    masked(f.heat_input), load_for(f.heat_input),
+                    func.count())
+                .group_by(group_column).order_by(group_column).all())
+
+    def build(result_rows):
+        out = []
+        for key, co2_total, load_total, c, cl, s, sl, n, nl, h, hl, count in result_rows:
+            out.append({
+                "group": "" if key is None else str(key),
+                "records": int(count),
+                "co2_total": _finite(co2_total),
+                "gross_load_total": _finite(load_total),
+                # SO2 and NOx are stored in short tons; x 2000 gives pounds per MWh, the usual unit
+                "co2_intensity": _ratio(c, cl),
+                "so2_intensity": _ratio(s, sl, 2000.0),
+                "nox_intensity": _ratio(n, nl, 2000.0),
+                "heat_rate": _ratio(h, hl),
+            })
+        return out
+
+    by_year = build(rows(func.substr(f.record_date, 1, 4)))
+    # year-over-year: compare each year with the one before it in the list
+    for previous, current in zip(by_year, by_year[1:]):
+        for field in ("co2_total", "co2_intensity", "heat_rate"):
+            before, now = previous[field], current[field]
+            change = None if before is None or now is None else now - before
+            current[f"{field}_change"] = _finite(change)
+            current[f"{field}_change_pct"] = _ratio(change, before, 100.0)
+    return {
+        "indicators": INDICATORS,
+        "by_year": by_year,
+        "by_state": build(rows(f.state)),
+        "note": "Ratios use only records with a positive gross load and a value for the numerator. "
+                "Records without gross load (the older uploads) are left out of the ratios, not counted as zero.",
+    }
+
+
+def distribution(filters, bins=30, max_states=12):
+    """Histogram of CO₂ per record, box-plot numbers per state, and the correlation matrix."""
+    frame = _numeric_frame(filters)
+    result = {"histogram": None, "boxes": [], "correlation": None,
+              "unit": STAT_FIELDS["co2_mass"]["unit"]}
+    co2 = frame["co2_mass"].dropna() if not frame.empty else pd.Series(dtype=float)
+    positive = co2[co2 > 0]
+    if len(positive) >= 2 and positive.min() != positive.max():
+        # emissions are very skewed, so the bins are even on a log scale
+        edges = np.logspace(np.log10(positive.min()), np.log10(positive.max()), bins + 1)
+        counts, edges = np.histogram(positive.to_numpy(), bins=edges)
+        result["histogram"] = {"edges": [float(e) for e in edges], "counts": [int(c) for c in counts],
+                               "zero_count": int((co2 == 0).sum()), "log_bins": True}
+
+    numeric = frame[[c for c in STAT_FIELDS if c in frame]].dropna(axis=1, how="all") if not frame.empty else frame
+    if numeric.shape[1] >= 2 and len(numeric) >= 3:
+        corr = numeric.corr(method="pearson", min_periods=3)
+        fields = list(corr.columns)
+        result["correlation"] = {"fields": fields, "labels": [STAT_FIELDS[c]["label"] for c in fields],
+                                 "matrix": [[_finite(v) for v in corr.loc[a, fields]] for a in fields],
+                                 "method": "Pearson, pairwise complete records"}
+
+    f = FacilityRecord
+    state_frame = pd.read_sql(_filtered_query(filters).filter(f.co2_mass.isnot(None))
+                              .with_entities(f.state, f.co2_mass).statement, db.engine)
+    for state, values in state_frame.groupby("state"):
+        values = values["co2_mass"].astype(float).to_numpy()
+        if len(values) < 2:
+            continue
+        q1, median, q3 = np.quantile(values, [0.25, 0.5, 0.75])
+        iqr = q3 - q1
+        # whiskers stop at the furthest real value within 1.5 x IQR, the usual Tukey rule
+        low = values[values >= q1 - 1.5 * iqr].min()
+        high = values[values <= q3 + 1.5 * iqr].max()
+        result["boxes"].append({"group": state, "n": int(len(values)), "q1": _finite(q1), "median": _finite(median),
+                                "q3": _finite(q3), "low": _finite(low), "high": _finite(high),
+                                "mean": _finite(values.mean()),
+                                "outliers": int(((values < low) | (values > high)).sum())})
+    result["boxes"] = sorted(result["boxes"], key=lambda b: -b["n"])[:max_states]
+    return result
+
+
 _options_cache = {"key": None, "value": None}
 
 
